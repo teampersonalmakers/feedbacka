@@ -161,16 +161,52 @@ npm run test:rules
 2. **Authentication → Settings → 승인된 도메인**에 배포 도메인 추가
    (`localhost` 와 Vercel 도메인). 빠지면 `auth/unauthorized-domain` 이 납니다.
 3. **Firestore Database 만들기** (프로덕션 모드, 리전 `asia-northeast3` 권장)
-4. **Storage 시작하기** (같은 리전)
+4. **Storage 시작하기** (같은 리전) — **선택**. 아래 "Storage 없이 쓰기" 참고
 5. **프로젝트 설정 → 서비스 계정 → 새 비공개 키 생성** → `FIREBASE_SERVICE_ACCOUNT`
+
+### Storage 없이 쓰기
+
+Storage 를 활성화하지 않아도 앱은 정상 동작합니다.
+
+- **OCR 은 그대로 작동합니다.** 이미지를 base64 로 `/api/ocr` 에 직접 보내므로
+  Storage 와 무관합니다.
+- 워크시트 **원본 보관 / 다시보기 링크**만 생기지 않습니다.
+- 업로드 실패는 `public/chat.html`, `public/classic.html` 양쪽에서 `.catch` 로
+  무시하고 진행합니다. 콘솔에 경고만 남습니다.
+
+나중에 Storage 를 켜면 코드 수정 없이 바로 동작합니다 — `storage.rules` 만
+추가로 배포하면 됩니다.
+
+### 서비스 계정 키가 없으면
+
+`FIREBASE_SERVICE_ACCOUNT` 없이도 로그인과 개인 기록(대화·피드백)은 브라우저
+SDK 로 동작합니다. 다만 **서버가 Firestore 에 접근하지 못해** 아래가 노션 폴백으로
+남습니다 — 즉 "노션 → Firebase DB 전환"이 일어나지 않습니다.
+
+| | 키 없음 | 키 있음 |
+|---|---|---|
+| 구글 로그인 / 디렉터 관리 | ✅ | ✅ |
+| 대화·피드백 기록 저장 | ✅ | ✅ |
+| 지침·플레이북 읽기 | 노션 | Firestore |
+| 평가·자동기록 쓰기 | 노션 | Firestore |
+| 디렉팅 사례(컨설팅) AI 연결 | ❌ | ✅ |
+| 노션 데이터 이전 | 실행 불가 | ✅ |
 
 ### 보안 규칙 배포
 
 ```bash
 npm i -g firebase-tools
 firebase login
+
+# Storage 를 안 쓰는 경우 (기본)
+firebase deploy --only firestore:rules
+
+# Storage 를 켠 경우
 firebase deploy --only firestore:rules,storage:rules
 ```
+
+> `firebase.json` 에 storage 블록이 있어서, Storage 를 활성화하지 않은 상태에서
+> `--only` 없이 `firebase deploy` 를 하면 실패합니다. 위 명령을 그대로 쓰세요.
 
 ```
 directors/{이메일}              본인 항목 읽기. 목록 조회·추가·삭제는 admin 만
