@@ -31,26 +31,49 @@ const TTL = 5 * 60 * 1000;
 let _db = null;
 let _initTried = false;
 
-// 서비스 계정: 원문 JSON 또는 base64 둘 다 받는다. Vercel 환경변수는 줄바꿈을
-// 다루기 까다로워서 base64 를 넣는 경우가 많다.
+// 서비스 계정: 원문 JSON 과 base64 를 모두 받는다.
+// 붙여넣는 과정에서 개행이 섞이거나 앞뒤가 잘리는 일이 잦아서, 가능한 해석을
+// 순서대로 다 시도한 뒤 실패하면 값이 아니라 "형태"만 로그로 남긴다.
 function readServiceAccount() {
   const raw = (process.env.FIREBASE_SERVICE_ACCOUNT || '').trim();
   if (!raw) return null;
-  let text = raw;
-  if (!text.startsWith('{')) {
-    try { text = Buffer.from(raw, 'base64').toString('utf-8'); } catch (e) { return null; }
+
+  const candidates = [];
+  if (raw.startsWith('{')) candidates.push(raw);
+
+  // base64 — 줄바꿈·공백이 섞여 들어와도 되도록 먼저 걷어낸다.
+  const b64 = raw.replace(/\s+/g, '');
+  if (b64 && /^[A-Za-z0-9+/=_-]+$/.test(b64)) {
+    try {
+      const decoded = Buffer.from(b64, 'base64').toString('utf-8');
+      if (decoded.trimStart().startsWith('{')) candidates.push(decoded);
+    } catch (e) { /* base64 아님 */ }
   }
-  try {
-    const sa = JSON.parse(text);
-    // Vercel UI 에 붙여넣으면 개행이 \n 문자열로 들어오는 경우가 흔하다.
-    if (sa.private_key && sa.private_key.indexOf('\\n') >= 0) {
-      sa.private_key = sa.private_key.replace(/\\n/g, '\n');
-    }
-    return sa;
-  } catch (e) {
-    console.warn('[Firestore] FIREBASE_SERVICE_ACCOUNT 파싱 실패:', e.message);
-    return null;
+
+  // JSON 앞뒤에 따옴표나 잡문자가 붙은 경우
+  const braced = raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1);
+  if (braced.startsWith('{') && !candidates.includes(braced)) candidates.push(braced);
+
+  for (const text of candidates) {
+    try {
+      const sa = JSON.parse(text);
+      if (!sa.private_key || !sa.client_email) continue;
+      // Vercel UI 에 붙여넣으면 개행이 \n 문자열로 들어오는 경우가 흔하다.
+      if (sa.private_key.indexOf('\\n') >= 0) {
+        sa.private_key = sa.private_key.replace(/\\n/g, '\n');
+      }
+      return sa;
+    } catch (e) { /* 다음 후보 */ }
   }
+
+  // 값 자체는 절대 찍지 않는다. 어떤 형태로 들어왔는지만 남긴다.
+  console.warn(
+    '[Firestore] FIREBASE_SERVICE_ACCOUNT 를 해석할 수 없습니다. ' +
+    `길이=${raw.length}, 시작문자=${JSON.stringify(raw.slice(0, 1))}, ` +
+    `공백포함=${/\s/.test(raw)}, base64형태=${/^[A-Za-z0-9+/=\s_-]+$/.test(raw)}. ` +
+    '서비스 계정 JSON 원문을 그대로 넣거나, base64 로 넣을 경우 줄바꿈 없이(base64 -w0) 넣어주세요.'
+  );
+  return null;
 }
 
 export function getDb() {
