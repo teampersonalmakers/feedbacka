@@ -6,6 +6,7 @@ import {
   loadCases as fsLoadCases,
   loadStudentHistory as fsLoadStudentHistory,
   pickCases,
+  firestoreEnabled,
 } from './_firestore.js';
 
 export const config = { supportsResponseStreaming: true };
@@ -301,11 +302,43 @@ export default async function handler(req, res) {
     if (!kb) return res.status(200).json({ status: 'error', message: '지식베이스 로드 실패' });
     const total = (kb.documents || []).reduce((s, d) => s + (d.chunks || []).length, 0);
     const docCount = (kb.documents || []).length;
-    let playbookCount = 0;
+
+    // 어떤 저장소에서 무엇을 읽고 있는지 그대로 보여준다.
+    // 배포 후 환경변수가 실제로 먹었는지 확인하는 용도.
+    // 값은 절대 노출하지 않고 설정 여부(boolean)만 담는다.
+    const fsOn = firestoreEnabled();
+    const g = fsOn ? await fsLoadGuidelines() : null;
+    const pb = fsOn ? await fsLoadPlaybook() : null;
+    const cs = fsOn ? await fsLoadCases() : null;
+
+    let notionPlaybookCount = 0;
     if (process.env.NOTION_API_KEY) {
-      playbookCount = (await loadPlaybookFromNotion(process.env.NOTION_API_KEY)).length;
+      notionPlaybookCount = (await loadPlaybookFromNotion(process.env.NOTION_API_KEY)).length;
     }
-    return res.status(200).json({ status: 'ok', docCount, chunkCount: total, playbookCount });
+
+    return res.status(200).json({
+      status: 'ok',
+      docCount,
+      chunkCount: total,
+      playbookCount: (pb && pb.length) || notionPlaybookCount,
+      env: {
+        CLAUDE_API_KEY: !!process.env.CLAUDE_API_KEY,
+        GEMINI_API_KEY: !!process.env.GEMINI_API_KEY,
+        FIREBASE_SERVICE_ACCOUNT: !!process.env.FIREBASE_SERVICE_ACCOUNT,
+        NOTION_API_KEY: !!process.env.NOTION_API_KEY,
+      },
+      firestore: {
+        enabled: fsOn,
+        guidelines: g ? Object.keys(g.categoryGuidelines || {}).length + 6 : 0,
+        hasPersona: !!(g && g.persona),
+        playbook: (pb || []).length,
+        cases: (cs || []).length,
+      },
+      source: {
+        guidelines: g && g.persona ? 'firestore' : (process.env.NOTION_API_KEY ? 'notion' : 'file'),
+        playbook: pb && pb.length ? 'firestore' : (notionPlaybookCount ? 'notion' : 'none'),
+      },
+    });
   }
 
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
