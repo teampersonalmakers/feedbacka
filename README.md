@@ -113,16 +113,45 @@ node scripts/migrate-notion-to-firestore.mjs --only=guidelines,cases
 > 디렉터 전용이 된 지금은 말투가 어긋날 수 있으니, 디렉터 톤으로 바꾸려면
 > `public/member.html` 의 `isPublic: true` 를 빼면 됩니다.
 
+### 소유자 부트스트랩
+
+화이트리스트가 비어 있으면 아무도(소유자 포함) 로그인할 수 없습니다. 그래서
+소유자 계정 하나를 **보안 규칙에 직접 박아** 두었습니다.
+
+```
+firestore.rules   isOwnerAccount()  → 'comingssoni@gmail.com'
+storage.rules     isDirector()      → 같은 이메일
+public/firebase.js OWNER_EMAILS     → 같은 이메일
+```
+
+이 계정은 `directors` 문서가 없어도 항상 통과하고 `admin` 권한을 갖습니다.
+규칙에 있으므로 서버에서 강제되며 클라이언트 조작으로는 뚫리지 않습니다.
+**바꾸려면 위 세 곳을 함께 수정해야 합니다.**
+
 ### 디렉터 등록
 
+**방법 1 — 브라우저 (서비스 계정 키 불필요)**
+admin 계정으로 로그인 → 헤더의 `👤` 배지 클릭 → `디렉터 관리` → 이메일·이름 입력.
+
+**방법 2 — CLI**
 ```bash
 export FIREBASE_SERVICE_ACCOUNT="$(cat serviceAccountKey.json)"
 
-node scripts/directors.mjs add comingssoni@gmail.com --name 커밍쏜 --role admin
-node scripts/directors.mjs add heidi@example.com     --name 헤이디
+node scripts/directors.mjs add heidi@example.com --name 헤이디
 node scripts/directors.mjs list
 node scripts/directors.mjs disable heidi@example.com   # 접근만 차단, 기록은 보존
 ```
+
+### 보안 규칙 테스트
+
+규칙은 에뮬레이터로 검증합니다 (Java 필요, 테스트 도구는 그때만 내려받아 씁니다).
+
+```bash
+npm run test:rules
+```
+
+소유자 부트스트랩 / 화이트리스트 / 남의 데이터 격리 / 임의 가입 차단 /
+팀 지식 컬렉션 차단 / 입력 검증까지 24개 케이스를 확인합니다.
 
 ---
 
@@ -144,7 +173,7 @@ firebase deploy --only firestore:rules,storage:rules
 ```
 
 ```
-directors/{이메일}              본인 항목 읽기만. 쓰기는 Admin SDK 전용
+directors/{이메일}              본인 항목 읽기. 목록 조회·추가·삭제는 admin 만
 users/{uid}                     디렉터 본인만
 users/{uid}/convs/{id}/turns/*  대화 (문서 1MiB 제한 회피용 서브컬렉션)
 users/{uid}/records/{id}        피드백 기록

@@ -4,14 +4,17 @@ rules_version = '2';
 //
 // 수강생 워크시트 캡처본 저장용.
 // Firestore 의 디렉터 화이트리스트를 교차 확인해서, 구글 계정만 있으면 아무나
-// 업로드하는 상황을 막는다. (Storage 규칙에서 Firestore 문서를 읽는 기능)
+// 업로드하는 상황을 막는다. 소유자 계정은 화이트리스트가 비어 있어도 통과한다
+// (firestore.rules 의 부트스트랩 예외와 동일).
 service firebase.storage {
   match /b/{bucket}/o {
 
+    // ⚠️ firestore.rules / public/firebase.js 의 소유자 이메일과 반드시 동일하게 유지
     function isDirector() {
       return request.auth != null
         && request.auth.token.email_verified == true
-        && firestore.exists(/databases/(default)/documents/directors/$(request.auth.token.email));
+        && (request.auth.token.email == 'comingssoni@gmail.com'
+            || firestore.exists(/databases/(default)/documents/directors/$(request.auth.token.email)));
     }
 
     match /users/{uid}/uploads/{allPaths=**} {

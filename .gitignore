@@ -12,3 +12,8 @@ firebase-debug.log
 firestore-debug.log
 *-serviceAccount*.json
 serviceAccountKey.json
+
+# Firebase 에뮬레이터
+firebase-debug.*.log
+firestore-debug.*.log
+ui-debug.log

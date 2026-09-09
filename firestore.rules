@@ -3,24 +3,46 @@ rules_version = '2';
 // Personalmakers AI — Firestore 보안 규칙
 //
 // 접근 자격: 구글 로그인 + directors/{이메일} 문서 존재 (디렉터 화이트리스트).
-// 화이트리스트 등록은 클라이언트에서 불가능하다 — Admin SDK(관리 스크립트)나
-// Firebase 콘솔에서만 추가할 수 있다. 그래서 "아무나 가입"이 원천 차단된다.
+//
+// 예외가 하나 있다: 아래 OWNER 이메일은 화이트리스트가 비어 있어도 항상 통과한다.
+// 최초 부트스트랩용이자 잠금 해제(break-glass) 장치다 — 이게 없으면 directors
+// 컬렉션이 빈 상태에서 아무도(소유자 포함) 로그인할 수 없다.
+// 규칙에 박혀 있으므로 서버에서 강제되고, 클라이언트 조작으로는 뚫리지 않는다.
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function signedIn() {
-      return request.auth != null;
+    // ⚠️ 소유자 계정. 바꾸려면 이 줄과 storage.rules, public/firebase.js 의
+    //    OWNER_EMAILS 를 함께 수정할 것.
+    function isOwnerAccount() {
+      return request.auth.token.email == 'comingssoni@gmail.com';
     }
 
-    // 이메일 인증까지 된 계정만. 구글 로그인은 항상 인증된 이메일을 준다.
+    function signedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function dirPath() {
+      return /databases/$(database)/documents/directors/$(request.auth.token.email);
+    }
+
+    // 화이트리스트에 있고 active 가 false 가 아닌 계정.
+    function listedDirector() {
+      return exists(dirPath()) && get(dirPath()).data.get('active', true) == true;
+    }
+
     function isDirector() {
+      return signedIn() && (isOwnerAccount() || listedDirector());
+    }
+
+    // 소유자, 또는 role 이 admin 인 디렉터. 화이트리스트를 관리할 수 있다.
+    function isAdmin() {
       return signedIn()
-        && request.auth.token.email_verified == true
-        && exists(/databases/$(database)/documents/directors/$(request.auth.token.email));
+        && (isOwnerAccount()
+            || (listedDirector() && get(dirPath()).data.get('role', 'director') == 'admin'));
     }
 
     function isOwner(uid) {
-      return signedIn() && request.auth.uid == uid;
+      return request.auth != null && request.auth.uid == uid;
     }
 
     // 한 번에 밀어넣는 양을 제한해 사고성 대량 쓰기를 막는다.
@@ -29,10 +51,21 @@ service cloud.firestore {
     }
 
     // ── 디렉터 화이트리스트 ────────────────────────────────────────────────
-    // 문서 ID = 소문자 이메일. 본인 항목만 확인할 수 있고, 아무도 쓸 수 없다.
+    // 문서 ID = 소문자 이메일. 일반 디렉터는 본인 항목만 확인할 수 있고,
+    // admin 만 목록 조회와 추가·삭제를 할 수 있다.
     match /directors/{docId} {
-      allow read: if signedIn() && docId == request.auth.token.email;
-      allow write: if false;   // 관리 스크립트(Admin SDK) 전용
+      allow read: if signedIn() && (docId == request.auth.token.email || isAdmin());
+
+      allow create, update: if isAdmin()
+        && request.resource.data.email == docId
+        && docId == docId.lower()
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 30
+        && request.resource.data.get('role', 'director') in ['director', 'admin']
+        && sizeOk();
+
+      allow delete: if isAdmin();
     }
 
     // ── 디렉터 개인 데이터 ─────────────────────────────────────────────────

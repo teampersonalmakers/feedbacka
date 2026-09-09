@@ -33,6 +33,11 @@ export const firebaseConfig = {
   measurementId: 'G-ZW2CQJQDNM',
 };
 
+// ⚠️ 소유자 계정 — firestore.rules / storage.rules 의 값과 반드시 동일하게 유지.
+// 화이트리스트가 비어 있어도 이 계정은 통과한다(최초 부트스트랩 / 잠금 해제용).
+// 실제 강제는 보안 규칙이 하고, 여기 목록은 화면 흐름을 맞추기 위한 것이다.
+const OWNER_EMAILS = ['comingssoni@gmail.com'];
+
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 
@@ -68,6 +73,30 @@ function injectStyles() {
 .pmauth-err { color:#e07b6f; }
 .pmauth-ok { color:#8a857e; }
 .pmauth-who { color:#6f6a63; font-size:11px; margin-top:14px; word-break:break-all; }
+
+.pmadmin-back { position:fixed; inset:0; z-index:99998; background:rgba(20,18,16,.62);
+  display:flex; align-items:center; justify-content:center; padding:20px; }
+.pmadmin { background:#262320; border:1px solid #3a3530; border-radius:16px;
+  width:min(430px,100%); max-height:82vh; overflow:auto; padding:26px 24px;
+  font-family:'Pretendard','Apple SD Gothic Neo',system-ui,sans-serif;
+  box-shadow:0 24px 70px rgba(0,0,0,.45); }
+.pmadmin h3 { color:#f0ede8; font-size:15.5px; margin:0 0 4px; font-weight:700; }
+.pmadmin .sub { color:#8a857e; font-size:12px; margin:0 0 18px; line-height:1.6; }
+.pmadmin-row { display:flex; align-items:center; gap:8px; padding:9px 10px;
+  border:1px solid #3a3530; border-radius:9px; margin-bottom:6px; }
+.pmadmin-row .nm { color:#f0ede8; font-size:12.5px; font-weight:600; flex-shrink:0; }
+.pmadmin-row .em { color:#8a857e; font-size:11px; flex:1; overflow:hidden;
+  text-overflow:ellipsis; white-space:nowrap; }
+.pmadmin-row .tag { font-size:9.5px; font-weight:700; color:#c8622a;
+  background:rgba(200,98,42,.15); border-radius:4px; padding:2px 6px; flex-shrink:0; }
+.pmadmin-row .del { background:none; border:0; color:#6f6a63; cursor:pointer;
+  font-size:13px; padding:2px 4px; flex-shrink:0; }
+.pmadmin-row .del:hover { color:#e07b6f; }
+.pmadmin-grid { display:grid; grid-template-columns:1fr 110px; gap:8px; margin-top:14px; }
+.pmadmin input { border:1px solid #3a3530; background:#1c1a17; color:#f0ede8;
+  border-radius:9px; padding:10px 12px; font-size:13px; font-family:inherit;
+  width:100%; box-sizing:border-box; }
+.pmadmin input:focus { outline:none; border-color:#c8622a; }
 `;
   document.head.appendChild(s);
 }
@@ -208,10 +237,21 @@ function gateFatal(detail) {
 
   // 화이트리스트 확인. 규칙에서도 같은 검사를 하므로 여기서 통과해도 서버가 막는다.
   async function lookupDirector(email) {
-    const snap = await F.getDoc(F.doc(db, 'directors', emailKey(email)));
-    if (!snap.exists()) return null;
-    const d = snap.data() || {};
-    return d.active === false ? null : d;
+    const id = emailKey(email);
+    const owner = OWNER_EMAILS.includes(id);
+
+    let d = null;
+    try {
+      const snap = await F.getDoc(F.doc(db, 'directors', id));
+      if (snap.exists()) d = snap.data() || {};
+    } catch (e) {
+      // 소유자는 문서를 못 읽어도 통과시킨다. 그 외에는 에러를 그대로 올린다.
+      if (!owner) throw e;
+    }
+
+    if (owner) return Object.assign({ name: '커밍쏜', role: 'admin' }, d || {}, { role: 'admin' });
+    if (!d || d.active === false) return null;
+    return d;
   }
 
   let PMFire = null;
@@ -239,6 +279,36 @@ function gateFatal(detail) {
       },
 
       signOut: () => A.signOut(auth),
+
+      // ── 디렉터 화이트리스트 관리 (admin 전용) ───────────────────────────
+      // 규칙이 admin 만 허용하므로, 권한이 없으면 서버가 거부한다.
+      isAdmin: () => (director.role || 'director') === 'admin',
+
+      async listDirectors() {
+        const snap = await F.getDocs(F.collection(db, 'directors'));
+        return snap.docs
+          .map((d) => Object.assign({ id: d.id }, d.data()))
+          .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'ko'));
+      },
+
+      async addDirector(email, name, role) {
+        const id = String(email || '').trim().toLowerCase();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(id)) throw new Error('이메일 형식이 올바르지 않습니다');
+        const nm = String(name || '').trim().slice(0, 30);
+        if (!nm) throw new Error('이름을 입력해주세요');
+        await F.setDoc(F.doc(db, 'directors', id), {
+          email: id,
+          name: nm,
+          role: role === 'admin' ? 'admin' : 'director',
+          active: true,
+          updatedAt: F.serverTimestamp(),
+        }, { merge: true });
+        return id;
+      },
+
+      async removeDirector(email) {
+        await F.deleteDoc(F.doc(db, 'directors', String(email || '').trim().toLowerCase()));
+      },
 
       async setNickname(nickname) {
         const n = String(nickname || '').trim().slice(0, 20);
@@ -357,7 +427,82 @@ function gateFatal(detail) {
     };
   }
 
-  // 헤더에 닉네임 배지를 붙인다. 클릭하면 닉네임을 바꿀 수 있다.
+  // 디렉터 관리 모달 (admin 전용)
+  async function openAdmin(api) {
+    const back = document.createElement('div');
+    back.className = 'pmadmin-back';
+    back.innerHTML = `
+      <div class="pmadmin">
+        <h3>디렉터 관리</h3>
+        <p class="sub">등록된 구글 계정만 이 앱에 로그인할 수 있습니다.</p>
+        <div id="pmadminList" style="color:#8a857e;font-size:12px">불러오는 중…</div>
+        <div class="pmadmin-grid">
+          <input id="pmadminEmail" type="email" placeholder="구글 계정 이메일" autocomplete="off">
+          <input id="pmadminName" maxlength="30" placeholder="이름">
+        </div>
+        <button class="pmauth-btn pmauth-google" id="pmadminAdd" style="margin-top:8px">추가하기</button>
+        <div class="pmauth-msg pmauth-err" id="pmadminMsg"></div>
+        <button class="pmauth-btn pmauth-ghost" id="pmadminClose">닫기</button>
+      </div>`;
+    document.body.appendChild(back);
+
+    const listEl = back.querySelector('#pmadminList');
+    const msg = back.querySelector('#pmadminMsg');
+    const close = () => back.remove();
+    back.querySelector('#pmadminClose').onclick = close;
+    back.onclick = (e) => { if (e.target === back) close(); };
+
+    async function refresh() {
+      try {
+        const rows = await api.listDirectors();
+        if (!rows.length) {
+          listEl.innerHTML = '<div style="color:#6f6a63;font-size:12px;padding:8px 0">' +
+            '아직 등록된 디렉터가 없습니다. 소유자 계정은 목록과 무관하게 로그인됩니다.</div>';
+          return;
+        }
+        listEl.innerHTML = '';
+        rows.forEach((r) => {
+          const row = document.createElement('div');
+          row.className = 'pmadmin-row';
+          row.innerHTML =
+            `<span class="nm"></span><span class="em"></span>` +
+            (r.role === 'admin' ? '<span class="tag">ADMIN</span>' : '') +
+            '<button class="del" title="삭제">✕</button>';
+          row.querySelector('.nm').textContent = r.name || '(이름 없음)';
+          row.querySelector('.em').textContent = r.email || r.id;
+          row.querySelector('.del').onclick = async () => {
+            if (!confirm((r.name || r.id) + ' 님의 접근 권한을 삭제할까요?\n(기록은 그대로 보존됩니다)')) return;
+            try { await api.removeDirector(r.id); await refresh(); }
+            catch (e) { msg.textContent = '삭제 실패: ' + e.message; }
+          };
+          listEl.appendChild(row);
+        });
+      } catch (e) {
+        listEl.innerHTML = '<div style="color:#e07b6f;font-size:12px">목록을 불러오지 못했습니다: ' + e.message + '</div>';
+      }
+    }
+
+    const emailEl = back.querySelector('#pmadminEmail');
+    const nameEl = back.querySelector('#pmadminName');
+    const addBtn = back.querySelector('#pmadminAdd');
+    addBtn.onclick = async () => {
+      msg.textContent = '';
+      addBtn.disabled = true;
+      try {
+        await api.addDirector(emailEl.value, nameEl.value);
+        emailEl.value = ''; nameEl.value = '';
+        await refresh();
+      } catch (e) {
+        msg.textContent = e.message;
+      }
+      addBtn.disabled = false;
+    };
+    nameEl.onkeydown = (e) => { if (e.key === 'Enter') addBtn.click(); };
+
+    refresh();
+  }
+
+  // 헤더에 닉네임 배지를 붙인다. 클릭하면 메뉴가 열린다.
   function mountBadge(api) {
     if (document.getElementById('pmauthBadge')) return;
     const host = document.querySelector('header, .top-bar, .header');
@@ -372,14 +517,26 @@ function gateFatal(detail) {
     const paint = () => { b.textContent = '👤 ' + (api.profile.nickname || '닉네임 설정'); };
     paint();
     window.addEventListener('pmfire:profile', paint);
+
     b.onclick = async () => {
-      const next = prompt('닉네임을 입력하세요 (최대 20자)', api.profile.nickname || '');
-      if (next === null) return;
-      if (!next.trim()) {
+      const opts = ['1. 닉네임 변경'];
+      if (api.isAdmin()) opts.push('2. 디렉터 관리');
+      opts.push((api.isAdmin() ? '3' : '2') + '. 로그아웃');
+      const pick = prompt(
+        api.profile.nickname + ' (' + api.profile.email + ')\n\n' + opts.join('\n') + '\n\n번호를 입력하세요',
+        '1'
+      );
+      if (pick === null) return;
+      const n = pick.trim();
+      if (n === '1') {
+        const next = prompt('닉네임을 입력하세요 (최대 20자)', api.profile.nickname || '');
+        if (next === null || !next.trim()) return;
+        try { await api.setNickname(next); } catch (e) { alert(e.message); }
+      } else if (api.isAdmin() && n === '2') {
+        openAdmin(api);
+      } else if ((api.isAdmin() && n === '3') || (!api.isAdmin() && n === '2')) {
         if (confirm('로그아웃할까요?')) api.signOut();
-        return;
       }
-      try { await api.setNickname(next); } catch (e) { alert(e.message); }
     };
     host.appendChild(b);
   }
