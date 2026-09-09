@@ -1,0 +1,18 @@
+{
+  "name": "personalmakers-ai",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Personalmakers AI 코치 — 수강생 미션 피드백 / 콘텐츠 기획 AI",
+  "scripts": {
+    "migrate": "node scripts/migrate-notion-to-firestore.mjs",
+    "migrate:dry": "node scripts/migrate-notion-to-firestore.mjs --dry-run",
+    "directors": "node scripts/directors.mjs"
+  },
+  "dependencies": {
+    "firebase-admin": "^14.3.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

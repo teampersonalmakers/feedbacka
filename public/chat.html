@@ -136,23 +136,14 @@ textarea#inp:focus { outline:none; border-color:var(--accent); }
 </footer>
 <script type="module" src="/firebase.js"></script>
 <script>
-// ─── Password Gate ───
+// ─── 접근 통제 ───────────────────────────────────────────────────────────────
+// 비밀번호 게이트는 제거됐다. 구글 로그인 + 디렉터 화이트리스트를 firebase.js 가
+// 담당한다. 게이트는 닫힌 채로 두고, 인증이 끝나야만 firebase.js 가 연다.
+// (firebase.js 가 못 뜨면 게이트가 그대로 남아 아무도 못 들어간다 — 의도된 동작)
 (function() {
-  var PW = '0630', KEY = 'pm_auth_v1';
-  if (sessionStorage.getItem(KEY) === 'ok') {
-    document.getElementById('pwGate').style.display = 'none';
-  }
-  document.getElementById('pwInput').addEventListener('keydown', function(e) { if (e.key === 'Enter') checkPW(); });
-  window.checkPW = function() {
-    var inp = document.getElementById('pwInput');
-    if (inp.value === PW) {
-      sessionStorage.setItem(KEY, 'ok');
-      document.getElementById('pwGate').style.display = 'none';
-    } else {
-      document.getElementById('pwErr').textContent = '비밀번호가 맞지 않아요';
-      setTimeout(function() { document.getElementById('pwErr').textContent = ''; inp.value = ''; }, 1200);
-    }
-  };
+  window.checkPW = function() {};   // 옛 onclick 핸들러 무력화
+  var gate = document.querySelector('#pwGate, #pwOverlay');
+  if (gate) gate.style.display = 'flex';
 })();
 
 // ─── State ───

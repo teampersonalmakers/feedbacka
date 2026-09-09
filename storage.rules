@@ -2,19 +2,28 @@ rules_version = '2';
 
 // Personalmakers AI — Cloud Storage 보안 규칙
 //
-// 수강생 워크시트 캡처본 저장용. 자기 uid 폴더에만 이미지 10MB 이하로 업로드 가능.
+// 수강생 워크시트 캡처본 저장용.
+// Firestore 의 디렉터 화이트리스트를 교차 확인해서, 구글 계정만 있으면 아무나
+// 업로드하는 상황을 막는다. (Storage 규칙에서 Firestore 문서를 읽는 기능)
 service firebase.storage {
   match /b/{bucket}/o {
 
+    function isDirector() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && firestore.exists(/databases/(default)/documents/directors/$(request.auth.token.email));
+    }
+
     match /users/{uid}/uploads/{allPaths=**} {
-      allow read: if request.auth != null && request.auth.uid == uid;
+      allow read: if request.auth != null && request.auth.uid == uid && isDirector();
 
       allow write: if request.auth != null
         && request.auth.uid == uid
+        && isDirector()
         && request.resource.size < 10 * 1024 * 1024
         && request.resource.contentType.matches('image/(jpeg|png|webp|gif)');
 
-      allow delete: if request.auth != null && request.auth.uid == uid;
+      allow delete: if request.auth != null && request.auth.uid == uid && isDirector();
     }
 
     match /{allPaths=**} {

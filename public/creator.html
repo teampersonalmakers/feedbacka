@@ -225,24 +225,16 @@ body { background: var(--bg); color: var(--ink); font-family: var(--font); min-h
   <button class="btn btn-primary" id="generateBtn" onclick="handleGenerate()" disabled>✨ 콘텐츠 기획 생성하기</button>
 </div>
 
+<script type="module" src="/firebase.js"></script>
 <script>
+// ─── 접근 통제 ───────────────────────────────────────────────────────────────
+// 비밀번호 게이트는 제거됐다. 구글 로그인 + 디렉터 화이트리스트를 firebase.js 가
+// 담당한다. 게이트는 닫힌 채로 두고, 인증이 끝나야만 firebase.js 가 연다.
 (function() {
-  if (sessionStorage.getItem("creator_auth") === "ok") {
-    var ov = document.getElementById("pwOverlay");
-    if (ov) ov.style.display = "none";
-  }
+  window.checkPW = function() {};   // 옛 onclick 핸들러 무력화
+  var ov = document.getElementById("pwOverlay");
+  if (ov) ov.style.display = "flex";
 })();
-function checkPW() {
-  var val = document.getElementById("pwInput").value;
-  if (val === "0730") {
-    sessionStorage.setItem("creator_auth", "ok");
-    document.getElementById("pwOverlay").style.display = "none";
-  } else {
-    document.getElementById("pwErr").textContent = "비밀번호가 틀렸어요";
-    document.getElementById("pwInput").value = "";
-    setTimeout(function(){ document.getElementById("pwErr").textContent = ""; }, 1200);
-  }
-}
 
 let inputMode="keyword", contentType="mid", isLoading=false, resultText="";
 let outputs={title:true,script:true,thumb:true};
@@ -349,11 +341,7 @@ async function handleGenerate() {
       if(ed.embeddings?.[0])hits=retrieve(ed.embeddings[0],8);
     }
     const scriptContext=hits.length>0?hits.map(h=>`[${h.docName}]
-${h.text}`).join("
-
----
-
-"):"(대본 없음)";
+${h.text}`).join("\n\n---\n\n"):"(대본 없음)";
     const outputList=[]; if(outputs.title)outputList.push("제목 후보 5개"); if(outputs.script)outputList.push("대본 구조"); if(outputs.thumb)outputList.push("썸네일 아이디어");
     const typeStr=contentType==="mid"?"미드폼 (8~15분)":"쇼츠 (60초 이하)";
     const styleStr=[]; if(styles.draft)styleStr.push("바로 쓸 수 있는 구체적인 초안"); if(styles.direction)styleStr.push("방향 제시 및 핵심 포인트");
@@ -372,15 +360,11 @@ ${h.text}`).join("
 
 function renderResult(text,topic) {
   let html=`<div style="margin-bottom:20px;padding:12px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;"><div style="font-size:10px;color:var(--ink-light);font-family:var(--mono);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">소재</div><div style="font-size:13px;font-weight:600;color:var(--ink);line-height:1.6">${topic}</div></div>`;
-  const titleMatch=text.match(/## 🎯 제목 후보.*?
-([\s\S]*?)(?=## |$)/);
-  const scriptMatch=text.match(/## 📝 대본 구조.*?
-([\s\S]*?)(?=## |$)/);
-  const thumbMatch=text.match(/## 🖼 썸네일.*?
-([\s\S]*?)(?=## |$)/);
+  const titleMatch=text.match(/## 🎯 제목 후보.*?\n([\s\S]*?)(?=## |$)/);
+  const scriptMatch=text.match(/## 📝 대본 구조.*?\n([\s\S]*?)(?=## |$)/);
+  const thumbMatch=text.match(/## 🖼 썸네일.*?\n([\s\S]*?)(?=## |$)/);
   if(titleMatch){
-    const titles=titleMatch[1].trim().split("
-").reduce((acc,line)=>{
+    const titles=titleMatch[1].trim().split("\n").reduce((acc,line)=>{
       const nm=line.match(/^(\d+)\.\s(.+)/), am=line.match(/^→\s(.+)/);
       if(nm)acc.push({num:nm[1],text:nm[2],reason:""});
       else if(am&&acc.length>0)acc[acc.length-1].reason=am[1];
@@ -395,8 +379,7 @@ function renderResult(text,topic) {
   if(!titleMatch&&!scriptMatch&&!thumbMatch)html+=`<div class="result-section"><div class="result-section-body">${fmt(text)}</div></div>`;
   document.getElementById("outputBody").innerHTML=html;
 }
-function fmt(t){return t.replace(/\*\*(.*?)\*\*/g,"<strong>$1</strong>").replace(/
-/g,"<br>");}
+function fmt(t){return t.replace(/\*\*(.*?)\*\*/g,"<strong>$1</strong>").replace(/\n/g,"<br>");}
 </script>
 </body>
 </html>

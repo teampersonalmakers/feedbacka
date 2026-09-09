@@ -560,32 +560,14 @@ textarea.txa { resize: vertical; line-height: 1.7; }
 
 <script type="module" src="/firebase.js"></script>
 <script>
-// ─── Password Gate (최우선 실행) ─────────────────────────────────────────────
+// ─── 접근 통제 ───────────────────────────────────────────────────────────────
+// 비밀번호 게이트는 제거됐다. 구글 로그인 + 디렉터 화이트리스트를 firebase.js 가
+// 담당한다. 게이트는 닫힌 채로 두고, 인증이 끝나야만 firebase.js 가 연다.
+// (firebase.js 가 못 뜨면 게이트가 그대로 남아 아무도 못 들어간다 — 의도된 동작)
 (function() {
-  const PW = '0630';
-  const KEY = 'pm_auth_v1';
-  if (sessionStorage.getItem(KEY) === 'ok') {
-    document.addEventListener('DOMContentLoaded', function() {
-      var gate = document.getElementById('pwGate');
-      if (gate) gate.style.display = 'none';
-    });
-  }
-  window.checkPW = function() {
-    var val = document.getElementById('pwInput').value;
-    if (val === PW) {
-      sessionStorage.setItem(KEY, 'ok');
-      var gate = document.getElementById('pwGate');
-      gate.style.opacity = '0';
-      gate.style.transition = 'opacity .3s';
-      setTimeout(function() { gate.style.display = 'none'; }, 300);
-    } else {
-      var inp = document.getElementById('pwInput');
-      var err = document.getElementById('pwErr');
-      inp.classList.add('shake', 'error');
-      err.textContent = '비밀번호가 맞지 않아요';
-      setTimeout(function() { inp.classList.remove('shake', 'error'); err.textContent = ''; inp.value = ''; }, 1200);
-    }
-  };
+  window.checkPW = function() {};   // 옛 onclick 핸들러 무력화
+  var gate = document.querySelector('#pwGate, #pwOverlay');
+  if (gate) gate.style.display = 'flex';
 })();
 
 // ─── State ───────────────────────────────────────────────────────────────────

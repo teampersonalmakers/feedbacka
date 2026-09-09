@@ -1,5 +1,12 @@
 import fs from 'fs';
 import path from 'path';
+import {
+  loadGuidelines as fsLoadGuidelines,
+  loadPlaybook as fsLoadPlaybook,
+  loadCases as fsLoadCases,
+  loadStudentHistory as fsLoadStudentHistory,
+  pickCases,
+} from './_firestore.js';
 
 export const config = { supportsResponseStreaming: true };
 
@@ -312,9 +319,12 @@ export default async function handler(req, res) {
   // ─── 서버사이드 RAG 검색 ─────────────────────────────────────────────────────
   // ─── 수강생 기억: 과거 상담 기록 자동 로드 ───
   const NOTION_KEY_S = (process.env.NOTION_API_KEY || '').trim();
-  if (studentName && String(studentName).trim() && NOTION_KEY_S) {
+  if (studentName && String(studentName).trim()) {
     try {
-      const stuCtx = await loadStudentHistory(NOTION_KEY_S, String(studentName).trim());
+      const _name = String(studentName).trim();
+      // Firestore 정본 → 없으면(null) Notion 폴백. 빈 문자열은 "기록 없음"이라 폴백하지 않는다.
+      let stuCtx = await fsLoadStudentHistory(_name);
+      if (stuCtx === null) stuCtx = NOTION_KEY_S ? await loadStudentHistory(NOTION_KEY_S, _name) : '';
       if (stuCtx) extraContext = (extraContext ? extraContext + '\n\n' : '') + stuCtx;
     } catch(e) { console.warn('수강생 기록 로드 실패(무시):', e.message); }
   }
@@ -387,19 +397,26 @@ ${outputList.includes('썸네일 아이디어') ? `## 🖼 썸네일 아이디�
   const NOTION_KEY = (process.env.NOTION_API_KEY || '').trim();
   let g = {};
 
-  // Notion에서 가이드라인 로드 (실패 시 로컬 파일 폴백)
-  if (NOTION_KEY) {
-    g = await loadGuidelinesFromNotion(NOTION_KEY) || {};
+  // 가이드라인: Firestore(정본) → Notion(폴백) → 로컬 파일(최후)
+  g = (await fsLoadGuidelines()) || {};
+  if (!g.persona && NOTION_KEY) {
+    g = (await loadGuidelinesFromNotion(NOTION_KEY)) || {};
   }
   if (!g.persona) {
     g = loadGuidelinesFromFile();
   }
 
-  // 플레이북(승인된 Q&A) 로드
-  let playbook = [];
-  if (NOTION_KEY) {
+  // 플레이북(승인된 Q&A): Firestore → Notion
+  let playbook = await fsLoadPlaybook();
+  if (playbook === null && NOTION_KEY) {
     playbook = await loadPlaybookFromNotion(NOTION_KEY);
   }
+  playbook = playbook || [];
+
+  // 디렉팅 사례 아카이브(컨설팅 내용) — Notion 에서 'AI반영' 체크된 것만.
+  // 기존 코드에는 이 경로가 아예 없어서, 컴펌된 사례가 AI 에 닿지 않고 있었다.
+  const allCases = (await fsLoadCases()) || [];
+  const relevantCases = pickCases(allCases, question, 3);
 
   const corePhilosophy = (g.corePhilosophy || [
     '유튜브는 SNS가 아니라 비즈니스다. 채널은 브랜드고, 콘텐츠는 상품이다.',
@@ -417,6 +434,13 @@ ${outputList.includes('썸네일 아이디어') ? `## 🖼 썸네일 아이디�
   const freeGuidelines = g.freeGuidelines ? `\n[추가 지침]\n${g.freeGuidelines}` : '';
   const personaBase = g.persona || '당신은 커밍쏜입니다. 유튜브 채널 성장과 콘텐츠 브랜딩 전문가입니다.';
 
+  const casesStr = relevantCases.length > 0
+    ? '\n\n[커밍쏜 디렉팅 사례 — 실제 컨설팅에서 나온 판단 기준]\n' +
+      relevantCases.map((c, i) =>
+        `사례 ${i + 1}. ${c.summary}${c.cohort ? ` (${c.cohort})` : ''}\n${String(c.body).slice(0, 1500)}`
+      ).join('\n\n')
+    : '';
+
   const playbookStr = playbook.length > 0
     ? '\n\n[팀 퍼메스 Q&A 플레이북]\n아래는 승인된 공식 Q&A입니다. 유사한 질문에는 이 답변의 내용과 기조를 우선 반영하세요.\n' +
       playbook.map((p, i) => `Q${i+1}. [${p.category}] ${p.q}\nA${i+1}. ${p.answer}`).join('\n\n')
@@ -428,7 +452,7 @@ ${outputList.includes('썸네일 아이디어') ? `## 🖼 썸네일 아이디�
 ${corePhilosophy}
 
 [말투와 스타일]
-${toneGuide}${categoryRules}${freeGuidelines}${doNotDo}${playbookStr}
+${toneGuide}${categoryRules}${freeGuidelines}${doNotDo}${casesStr}${playbookStr}
 
 당신의 과거 콘텐츠, 강의, 컨설팅 자료를 참고하여 답변하세요.
 ${isPublic
