@@ -16,7 +16,7 @@ public/       정적 페이지
   chat.html      챗 UI
   classic.html   미션 피드백 2단 레이아웃
   creator.html   콘텐츠 기획 생성기
-  member.html    수강생/멤버십 회원용 경량 페이지
+  member.html    경량 페이지 (디렉터 전용)
   firebase.js    인증 + Firestore + Storage 연동 레이어
 scripts/
   migrate-notion-to-firestore.mjs   노션 → Firestore 데이터 이전
@@ -100,15 +100,18 @@ node scripts/migrate-notion-to-firestore.mjs --only=guidelines,cases
 
 비밀번호 게이트(`0630` / `0730`)는 **제거**했습니다. 소스만 보면 뚫리는 구조였습니다.
 
-이제 `index` / `chat` / `classic` / `creator` 는 구글 로그인을 거치고,
-`directors/{이메일}` 문서가 있는 계정만 통과합니다. 화이트리스트는 보안 규칙에서
-클라이언트 쓰기가 **전면 차단**돼 있어 아무나 가입할 수 없습니다.
+이제 **5개 페이지 전부**(`index` / `chat` / `classic` / `creator` / `member`)가
+구글 로그인을 거치고, `directors/{이메일}` 문서가 있는 계정만 통과합니다.
+화이트리스트는 보안 규칙에서 클라이언트 쓰기가 **전면 차단**돼 있어 아무나
+가입할 수 없습니다.
 
 로그인 후 닉네임이 없으면 설정 화면이 먼저 뜹니다. 닉네임은 헤더의 `👤` 배지를
 눌러 언제든 바꿀 수 있고, 피드백 기록에 작성자로 남습니다.
 
-> `member.html` 은 수강생·멤버십 회원용이라 기존 비밀번호 게이트를 유지했습니다.
-> 여기도 디렉터 전용으로 잠그려면 알려주세요.
+> `member.html` 은 `/api/feedback` 에 `isPublic: true` 를 보냅니다. 이 플래그는
+> "지금 대화하는 상대는 멤버십 회원입니다" 라는 지시를 프롬프트에 넣습니다.
+> 디렉터 전용이 된 지금은 말투가 어긋날 수 있으니, 디렉터 톤으로 바꾸려면
+> `public/member.html` 의 `isPublic: true` 를 빼면 됩니다.
 
 ### 디렉터 등록
 

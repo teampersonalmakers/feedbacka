@@ -315,6 +315,7 @@ textarea.q-input::placeholder { color: var(--ink-light); }
 
 </div>
 
+<script type="module" src="/firebase.js"></script>
 <script>
 let selectedCat = 'channel';
 let selectedMode = 'conv';
@@ -480,31 +481,14 @@ function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').repl
 loadKB();
 updatePlaceholder();
 
-// ─── Password Gate ────────────────────────────────────────────────────────────
+// ─── 접근 통제 ───────────────────────────────────────────────────────────────
+// 비밀번호 게이트는 제거됐다. 구글 로그인 + 디렉터 화이트리스트를 firebase.js 가
+// 담당한다. 게이트는 닫힌 채로 두고, 인증이 끝나야만 firebase.js 가 연다.
+// (firebase.js 가 못 뜨면 게이트가 그대로 남아 아무도 못 들어간다 — 의도된 동작)
 (function() {
-  const PW = '0730';
-  const KEY = 'pm_auth_v1';
-  // 이미 인증됐으면 바로 통과
-  if (sessionStorage.getItem(KEY) === 'ok') {
-    document.getElementById('pwGate').style.display = 'none';
-    return;
-  }
-  window.checkPW = function() {
-    const val = document.getElementById('pwInput').value;
-    if (val === PW) {
-      sessionStorage.setItem(KEY, 'ok');
-      const gate = document.getElementById('pwGate');
-      gate.style.opacity = '0';
-      gate.style.transition = 'opacity .3s';
-      setTimeout(() => gate.style.display = 'none', 300);
-    } else {
-      const inp = document.getElementById('pwInput');
-      const err = document.getElementById('pwErr');
-      inp.classList.add('shake', 'error');
-      err.textContent = '비밀번호가 맞지 않아요';
-      setTimeout(() => { inp.classList.remove('shake', 'error'); err.textContent = ''; inp.value = ''; }, 1200);
-    }
-  };
+  window.checkPW = function() {};   // 옛 onclick 핸들러 무력화
+  var gate = document.getElementById('pwGate');
+  if (gate) gate.style.display = 'flex';
 })();
 </script>
 </body>
