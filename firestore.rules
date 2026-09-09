@@ -1,0 +1,63 @@
+rules_version = '2';
+
+// Personalmakers AI — Firestore 보안 규칙
+//
+// 익명 로그인으로 발급된 uid 기준으로 자기 데이터만 읽고 쓸 수 있습니다.
+// 로그인하지 않은 요청은 전부 거부됩니다.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+    // 한 번에 밀어넣는 양을 제한해 사고성 대량 쓰기를 막는다.
+    function sizeOk() {
+      return request.resource.data.size() < 40;
+    }
+
+    match /users/{uid} {
+      allow read: if isOwner(uid);
+      allow create, update: if isOwner(uid) && sizeOk();
+      allow delete: if false;
+
+      // 대화 목록
+      match /convs/{convId} {
+        allow read, delete: if isOwner(uid);
+        allow create, update: if isOwner(uid) && sizeOk()
+          && request.resource.data.title is string
+          && request.resource.data.title.size() <= 200
+          && request.resource.data.student is string
+          && request.resource.data.student.size() <= 100;
+
+        // 대화 안의 턴
+        match /turns/{turnId} {
+          allow read, delete: if isOwner(uid);
+          allow create, update: if isOwner(uid) && sizeOk()
+            && request.resource.data.seq is int
+            && request.resource.data.q is string
+            && request.resource.data.q.size() <= 60000
+            && (request.resource.data.a == null ||
+                (request.resource.data.a is string && request.resource.data.a.size() <= 200000));
+        }
+      }
+
+      // classic.html 피드백 기록
+      match /records/{recordId} {
+        allow read, delete: if isOwner(uid);
+        allow create, update: if isOwner(uid) && sizeOk()
+          && request.resource.data.mission is string
+          && request.resource.data.mission.size() <= 60000
+          && request.resource.data.answer is string
+          && request.resource.data.answer.size() <= 200000;
+      }
+    }
+
+    // 위에서 명시하지 않은 경로는 전부 차단
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

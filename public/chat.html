@@ -134,6 +134,7 @@ textarea#inp:focus { outline:none; border-color:var(--accent); }
     </div>
   </div>
 </footer>
+<script type="module" src="/firebase.js"></script>
 <script>
 // ─── Password Gate ───
 (function() {
@@ -159,6 +160,7 @@ var turns = [];   // {q, a}
 var mode = 'conv';
 var busy = false;
 var ocrText = '';
+var attMeta = null;   // { url, name } — Storage 에 올라간 워크시트 캡처본
 var MTLABEL = { channel: '채널 기획', content: '콘텐츠 기획', free: '자유 질문' };
 
 function setMode(m) {
@@ -193,6 +195,14 @@ function onFile(input) {
     document.getElementById('attBtn').classList.add('has');
     document.getElementById('attLabel').style.display = 'inline-flex';
     document.getElementById('attName').textContent = '🖼 ' + f.name + ' 인식 중…';
+
+    // 원본 캡처본은 Storage 에 보관 — OCR 과 동시에 진행해서 체감 속도를 유지한다.
+    var uploading = window.PMFire
+      ? window.PMFire.uploadImage(f, 'chat').catch(function(e) {
+          console.warn('[PMFire] 이미지 업로드 실패(무시):', e.message); return null;
+        })
+      : Promise.resolve(null);
+
     try {
       var r = await fetch('/api/ocr', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: b64, mediaType: f.type }) });
       var d = await r.json();
@@ -203,11 +213,15 @@ function onFile(input) {
       ocrText = '';
       document.getElementById('attName').textContent = '이미지 인식 실패';
     }
+
+    var up = await uploading;
+    if (up) attMeta = { url: up.url, name: f.name };
   };
   reader.readAsDataURL(f);
 }
 function clearAtt() {
   ocrText = '';
+  attMeta = null;
   document.getElementById('file').value = '';
   document.getElementById('attBtn').classList.remove('has');
   document.getElementById('attLabel').style.display = 'none';
@@ -223,7 +237,7 @@ function renderAll() {
     return;
   }
   turns.forEach(function(t) {
-    w.appendChild(userBubble(t.q, t.att));
+    w.appendChild(userBubble(t.q, t.att, t.attUrl, t.attName));
     if (t.a != null) { var b = aiBubble(); b.text.innerHTML = md(t.a); addActions(b, t.q, t.a, t.sources); }
   });
   scrollBottom();
@@ -236,11 +250,25 @@ function buildEmpty() {
   d.id = 'empty';
   return d;
 }
-function userBubble(q, att) {
+function userBubble(q, att, attUrl, attName) {
   var d = document.createElement('div');
   d.className = 'msg-u';
   d.textContent = q;
-  if (att) { var a = document.createElement('span'); a.className = 'att'; a.textContent = '🖼 워크시트 첨부됨'; d.appendChild(a); }
+  if (att) {
+    var a;
+    if (attUrl) {
+      // Storage 에 보관된 원본 — 새 탭에서 다시 열어볼 수 있다.
+      a = document.createElement('a');
+      a.href = attUrl; a.target = '_blank'; a.rel = 'noopener';
+      a.textContent = '🖼 ' + (attName || '워크시트') + ' 열기';
+      a.style.textDecoration = 'underline';
+    } else {
+      a = document.createElement('span');
+      a.textContent = '🖼 워크시트 첨부됨';
+    }
+    a.className = 'att';
+    d.appendChild(a);
+  }
   return d;
 }
 function aiBubble() {
@@ -331,9 +359,9 @@ async function send() {
     });
   }
 
-  var turn = { q: text || '워크시트 첨부', att: hadAtt, a: null, sources: [] };
+  var turn = { q: text || '워크시트 첨부', att: hadAtt, attUrl: (attMeta && attMeta.url) || '', attName: (attMeta && attMeta.name) || '', a: null, sources: [] };
   turns.push(turn);
-  document.getElementById('msgs').appendChild(userBubble(turn.q, hadAtt));
+  document.getElementById('msgs').appendChild(userBubble(turn.q, hadAtt, turn.attUrl, turn.attName));
   var b = aiBubble();
   b.text.innerHTML = '<span class="cursor"></span>';
   scrollBottom();
@@ -546,5 +574,100 @@ document.addEventListener('drop', function(e) {
     if (old.length && !convs.length) { convs.push({ id: String(Date.now()), title: old[0].q.slice(0, 34), student: '', turns: old, ts: Date.now() }); persistConvs(); localStorage.removeItem('pm_chat_v1'); }
   } catch(e) {}
   if (convs.length) { openConv(convs[0].id); } else { turns = []; renderAll(); renderSide(); }
+})();
+
+// ─── Firestore 동기화 ────────────────────────────────────────────────────────
+// localStorage 는 즉시 렌더용 캐시, Firestore 가 진짜 저장소.
+// PMFire 가 없으면(설정 누락/네트워크 차단) 아래는 전부 no-op 이고 기존 동작 그대로다.
+(function() {
+  var _persist = persistConvs;
+  var _saveChat = saveChat;
+  var _delConv = delConv;
+  var _openConv = openConv;
+  var cloudBusy = false;
+
+  function warn(e) { console.warn('[PMFire] 동기화 실패(로컬은 정상):', e && e.message ? e.message : e); }
+
+  // 대화 메타 + 아직 안 올라간 턴을 Firestore 로 밀어 올린다.
+  async function pushConv(c) {
+    if (!window.PMFire || !c) return;
+    await window.PMFire.saveConvMeta(c);
+    var list = c.turns || [];
+    // 마지막 동기화 지점부터. 직전 턴은 답변이 채워졌을 수 있어 한 칸 되돌려 다시 쓴다.
+    var start = Math.max(0, Math.min(c._syncedUpTo || 0, list.length - 1));
+    for (var i = start; i < list.length; i++) await window.PMFire.saveTurn(c.id, i, list[i]);
+    c._syncedUpTo = list.length;
+  }
+
+  saveChat = function() {
+    _saveChat();
+    var c = activeConv();
+    if (!window.PMFire || !c) return;
+    pushConv(c).catch(warn);
+  };
+
+  delConv = function(id, ev) {
+    var before = convs.length;
+    _delConv(id, ev);
+    if (window.PMFire && convs.length < before) window.PMFire.deleteConv(id).catch(warn);
+  };
+
+  // 클라우드에만 있는 대화는 turns 가 없다 — 열 때 그때 가져온다.
+  openConv = function(id) {
+    var c = convs.find(function(x) { return x.id === id; });
+    if (!c) return;
+    if (c.turns || !window.PMFire) return _openConv(id);
+    activeId = id;
+    turns = [];
+    document.getElementById('stuName').value = c.student || '';
+    document.getElementById('msgs').innerHTML = '<div class="msg-a"><div class="avatar">P</div><div class="bubble"><div class="atext">대화를 불러오는 중…</div></div></div>';
+    renderSide();
+    document.body.classList.remove('side-open');
+    window.PMFire.loadTurns(id).then(function(t) {
+      c.turns = t; c._syncedUpTo = t.length;
+      if (activeId === id) { turns = t; renderAll(); }
+      _persist();
+    }).catch(function(e) { warn(e); c.turns = []; if (activeId === id) { turns = []; renderAll(); } });
+  };
+
+  // 최초 1회: 클라우드 목록과 로컬 목록을 합친다.
+  async function syncOnce() {
+    if (cloudBusy) return;
+    cloudBusy = true;
+    try {
+      var remote = await window.PMFire.listConvs(60);
+      var localById = {};
+      convs.forEach(function(c) { localById[c.id] = c; });
+
+      // 클라우드에만 있는 대화 → 목록에 추가 (turns 는 열 때 로드)
+      remote.forEach(function(r) {
+        var c = localById[r.id];
+        if (!c) { convs.push({ id: r.id, title: r.title, student: r.student, ts: r.ts, turnCount: r.turnCount }); }
+        else { c._syncedUpTo = c._syncedUpTo || r.turnCount || 0; if (r.ts > (c.ts || 0)) { c.title = r.title || c.title; c.student = r.student || c.student; c.ts = r.ts; } }
+      });
+
+      convs.sort(function(a, b) { return (b.ts || 0) - (a.ts || 0); });
+      _persist();
+      renderSide();
+
+      // 로컬에만 있던 대화 → 클라우드로 올린다 (기존 사용자 마이그레이션)
+      var remoteIds = {};
+      remote.forEach(function(r) { remoteIds[r.id] = 1; });
+      for (var i = 0; i < convs.length; i++) {
+        var c = convs[i];
+        if (!remoteIds[c.id] && c.turns && c.turns.length) { try { await pushConv(c); } catch(e) { warn(e); } }
+      }
+      _persist();
+
+      // 새 기기: 열려 있는 대화의 턴이 아직 없거나 아무것도 안 열려 있으면 최신 대화를 연다.
+      var cur = activeConv();
+      if (activeId && cur && !cur.turns) openConv(activeId);
+      else if (!activeId && convs.length) openConv(convs[0].id);
+    } catch(e) { warn(e); }
+    cloudBusy = false;
+  }
+
+  window.addEventListener('pmfire:ready', function() { syncOnce(); });
+  if (window.PMFire) syncOnce();
 })();
 </script>

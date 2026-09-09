@@ -558,6 +558,7 @@ textarea.txa { resize: vertical; line-height: 1.7; }
 </div>
 
 
+<script type="module" src="/firebase.js"></script>
 <script>
 // ─── Password Gate (최우선 실행) ─────────────────────────────────────────────
 (function() {
@@ -630,7 +631,9 @@ async function handleFeedback() {
         answer: fbData.feedback,
         mode,
         sources: fbData.sources || [],
+        imageUrl: (currentImageData && currentImageData.url) || '',
         time: new Date().toLocaleString('ko-KR'),
+      ts: Date.now(),
       });
       return;
     }
@@ -644,7 +647,9 @@ async function handleFeedback() {
       answer: '',
       mode,
       sources: [],
+      imageUrl: (currentImageData && currentImageData.url) || '',
       time: new Date().toLocaleString('ko-KR'),
+      ts: Date.now(),
     };
     const card = renderFeedbackCard(record);
     const contentEl = card.querySelector('.fb-content');
@@ -722,14 +727,25 @@ function addToHistory(record) {
   if (records.length > 100) records.pop(); // 최대 100개
   saveHistory(records);
   updateHistoryBtns();
+  // Firestore 미러링 — 실패해도 로컬 기록은 그대로 남는다.
+  if (window.PMFire) {
+    window.PMFire.addRecord(record).catch(function(e) {
+      console.warn('[PMFire] 기록 저장 실패(로컬은 정상):', e.message);
+    });
+  }
 }
 function updateHistoryBtns() {
   const records = loadHistory();
   document.getElementById('historyBtns').style.display = records.length > 0 ? 'flex' : 'none';
 }
 function clearHistory() {
-  if (!confirm('저장된 모든 피드백 히스토리를 삭제할까요?')) return;
+  if (!confirm('저장된 모든 피드백 히스토리를 삭제할까요? (이 계정의 클라우드 기록도 함께 지워집니다)')) return;
   localStorage.removeItem(HIST_KEY);
+  if (window.PMFire) {
+    window.PMFire.clearRecords().catch(function(e) {
+      console.warn('[PMFire] 클라우드 기록 삭제 실패:', e.message);
+    });
+  }
   document.getElementById('feedbackBody').innerHTML = `<div class="fb-empty" id="fbEmpty"><div class="icon">✍️</div><h3>피드백 대기 중</h3><p>왼쪽에 수강생 미션 내용을 입력하면 Personalmakers AI 관점으로 피드백을 생성합니다</p></div>`;
   document.getElementById('fbSub').textContent = '미션 내용을 입력하고 생성을 눌러주세요';
   updateHistoryBtns();
@@ -842,13 +858,32 @@ function finalizeFeedbackCard(card, record) {
     box.querySelector('.fb-src-label').textContent = '📎 참고한 지식 (' + record.sources.length + '개)';
     box.querySelector('.src-pills').innerHTML = record.sources.map(s => `<span class="src-pill">${escHtml(s.docName)}</span>`).join('');
   }
+  // 업로드가 스트리밍보다 늦게 끝났을 수 있으므로 여기서 한 번 더 확인한다.
+  if (!record.imageUrl && currentImageData && currentImageData.url) record.imageUrl = currentImageData.url;
+  attachImageLink(card, record);
+}
+
+// 첨부한 워크시트 원본(Storage 보관본)을 카드에서 다시 열 수 있게 링크를 단다.
+function attachImageLink(card, record) {
+  if (!record.imageUrl) return;
+  if (card.querySelector('.fb-img-link')) return;
+  const wrap = card.querySelector('.fb-mission') || card.querySelector('.fb-meta');
+  if (!wrap) return;
+  const a = document.createElement('a');
+  a.className = 'fb-img-link';
+  a.href = record.imageUrl;
+  a.target = '_blank';
+  a.rel = 'noopener';
+  a.textContent = '🖼 첨부한 워크시트 원본 보기';
+  a.style.cssText = 'display:inline-block;margin-top:8px;font-size:12px;color:var(--accent);text-decoration:underline';
+  wrap.appendChild(a);
 }
 
 function showFeedback(record) {
   hideLoading();
-  addToHistory(record);
   const card = renderFeedbackCard(record);
   finalizeFeedbackCard(card, record);
+  addToHistory(record);
   const missionLabel = {
     channel:'채널 기획', content:'콘텐츠 기획', free:'자유 질문'
   }[record.missionType] || record.missionType;
@@ -1031,7 +1066,16 @@ function escHtml(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').
       document.getElementById('imgPreview').src = dataUrl;
       document.getElementById('imgPreviewWrap').style.display = 'block';
 
-      currentImageData = { base64: parts[1], mediaType: file.type, file };
+      currentImageData = { base64: parts[1], mediaType: file.type, file, url: '' };
+
+      // 원본 캡처본을 Storage 에 보관 — OCR 과 동시에 진행한다.
+      if (window.PMFire) {
+        const target = currentImageData;
+        window.PMFire.uploadImage(file, 'classic')
+          .then(function(up) { target.url = up.url; })
+          .catch(function(e) { console.warn('[PMFire] 이미지 업로드 실패(무시):', e.message); });
+      }
+
       extractTextFromImage();
     };
     reader.readAsDataURL(file);
@@ -1114,6 +1158,66 @@ function escHtml(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').
 loadKnowledgeBase();
 // 저장된 히스토리 있으면 버튼 표시
 setTimeout(updateHistoryBtns, 100);
+
+// ─── Firestore 동기화 ─────────────────────────────────────────────────────────
+// 다른 기기에서 남긴 기록을 로컬 캐시에 합치고, 로컬에만 있던 기록은 올려보낸다.
+// PMFire 가 없으면 아무 일도 일어나지 않고 기존 localStorage 동작 그대로다.
+(function() {
+  function key(r) { return (r.time || '') + '|' + (r.student || '') + '|' + (r.mission || '').slice(0, 120); }
+
+  // 예전 기록에는 ts 가 없고 time 은 '2026. 9. 9. 오후 10:30:00' 형태라
+  // new Date() 로 파싱되지 않는다. 직접 뜯어서 정렬 키를 만든다.
+  function tsOf(r) {
+    if (r.ts) return r.ts;
+    // 런타임 ICU 에 따라 '오전/오후' 또는 'AM/PM' 으로 나온다. 둘 다 받는다.
+    const m = /(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})\.\s*(오전|오후|AM|PM)?\s*(\d{1,2}):(\d{2})(?::(\d{2}))?/i.exec(r.time || '');
+    if (!m) return 0;
+    let h = +m[5];
+    const pm = m[4] && /오후|PM/i.test(m[4]);
+    const am = m[4] && /오전|AM/i.test(m[4]);
+    if (pm && h < 12) h += 12;
+    if (am && h === 12) h = 0;
+    return new Date(+m[1], +m[2] - 1, +m[3], h, +m[6], +(m[7] || 0)).getTime();
+  }
+
+  async function hydrate() {
+    try {
+      const remote = await window.PMFire.listRecords(100);
+      const local = loadHistory();
+      const seen = {};
+      local.forEach(function(r) { seen[key(r)] = 1; });
+
+      // 로컬에 없는 클라우드 기록 추가
+      const merged = local.slice();
+      remote.forEach(function(r) {
+        if (seen[key(r)]) return;
+        seen[key(r)] = 1;
+        merged.push({
+          student: r.student, missionType: r.missionType, mission: r.mission,
+          answer: r.answer, mode: r.mode, sources: r.sources || [],
+          imageUrl: r.imageUrl || '', time: r.time, ts: r.ts || 0,
+        });
+      });
+      merged.sort(function(a, b) { return tsOf(b) - tsOf(a); });
+      saveHistory(merged.slice(0, 100));
+      updateHistoryBtns();
+
+      // 클라우드에 없는 로컬 기록 올리기 (기존 사용자 마이그레이션)
+      const remoteKeys = {};
+      remote.forEach(function(r) { remoteKeys[key(r)] = 1; });
+      for (const r of local) {
+        if (!remoteKeys[key(r)]) {
+          try { await window.PMFire.addRecord(r); } catch(e) { break; }
+        }
+      }
+    } catch(e) {
+      console.warn('[PMFire] 히스토리 동기화 실패(로컬은 정상):', e.message);
+    }
+  }
+
+  window.addEventListener('pmfire:ready', hydrate);
+  if (window.PMFire) hydrate();
+})();
 
 
 </script>

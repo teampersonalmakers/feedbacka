@@ -1,0 +1,24 @@
+rules_version = '2';
+
+// Personalmakers AI — Cloud Storage 보안 규칙
+//
+// 수강생 워크시트 캡처본 저장용. 자기 uid 폴더에만 이미지 10MB 이하로 업로드 가능.
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    match /users/{uid}/uploads/{allPaths=**} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+
+      allow write: if request.auth != null
+        && request.auth.uid == uid
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp|gif)');
+
+      allow delete: if request.auth != null && request.auth.uid == uid;
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
