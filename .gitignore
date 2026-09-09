@@ -10,8 +10,18 @@ node_modules/
 .firebase/
 firebase-debug.log
 firestore-debug.log
-*-serviceAccount*.json
+
+# 서비스 계정 키 — 절대 커밋 금지.
+# 콘솔에서 받은 파일명이 제각각이라(예: personalmakers-ai-firebase-adminsdk-….json)
+# 넓게 잡는다.
+*serviceaccount*.json
+*serviceAccount*.json
+*ServiceAccount*.json
 serviceAccountKey.json
+*firebase-adminsdk*.json
+*firebaseadminsdk*.json
+*-adminsdk-*.json
+sa.json
 
 # Firebase 에뮬레이터
 firebase-debug.*.log

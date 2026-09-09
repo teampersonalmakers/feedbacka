@@ -194,19 +194,24 @@ SDK 로 동작합니다. 다만 **서버가 Firestore 에 접근하지 못해** 
 
 ### 보안 규칙 배포
 
+서비스 계정만 있으면 됩니다. `firebase login` 이 필요 없습니다.
+
 ```bash
-npm i -g firebase-tools
-firebase login
+export FIREBASE_SERVICE_ACCOUNT="$(cat serviceAccountKey.json)"
 
-# Storage 를 안 쓰는 경우 (기본)
-firebase deploy --only firestore:rules
-
-# Storage 를 켠 경우
-firebase deploy --only firestore:rules,storage:rules
+npm run deploy:rules                        # firestore 규칙
+node scripts/deploy-rules.mjs --storage     # storage 규칙까지 (Storage 켠 경우)
+node scripts/deploy-rules.mjs --check       # 배포 없이 차이만 확인
 ```
 
-> `firebase.json` 에 storage 블록이 있어서, Storage 를 활성화하지 않은 상태에서
-> `--only` 없이 `firebase deploy` 를 하면 실패합니다. 위 명령을 그대로 쓰세요.
+내용이 같으면 건너뛰고, 배포 후에는 되읽어서 실제 반영을 확인합니다.
+
+> **왜 `firebase deploy` 를 안 쓰나**: firebase-tools 는 배포 전에
+> `serviceusage.googleapis.com` 으로 API 활성화 여부를 확인하는데, 콘솔에서 받는
+> `firebase-adminsdk` 서비스 계정에는 그 권한이 없어 403 으로 막힙니다.
+> 위 스크립트는 Rules API 를 직접 호출해 그 사전 점검을 건너뜁니다.
+> `firebase login` 을 한 사람은 `firebase deploy --only firestore:rules` 를 써도 됩니다
+> (`--only` 를 빼면 `firebase.json` 의 storage 블록 때문에 실패합니다).
 
 ```
 directors/{이메일}              본인 항목 읽기. 목록 조회·추가·삭제는 admin 만
