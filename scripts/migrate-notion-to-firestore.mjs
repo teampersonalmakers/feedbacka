@@ -2,7 +2,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Notion → Firestore 마이그레이션
 //
-// 노션에 쌓아둔 지침 / 컨설팅(디렉팅 사례) / 자료(KB 소스) / 플레이북 / 평가 로그를
+// 노션에 쌓아둔 지침 / 컨설팅(디렉팅 사례) / 자료(KB 소스, 원문 자막 포함) / 플레이북 /
+// 평가 로그를
 // Firestore 로 옮긴다. 페이지 본문(블록)까지 같이 가져온다 — 실제 내용은 속성이
 // 아니라 본문에 있기 때문이다.
 //
@@ -231,26 +232,53 @@ const migrators = {
     return docs;
   },
 
-  // 자료 — 지식베이스 소스 관리 (본문 없음, 속성만)
+  // 자료 — 지식베이스 소스 관리
+  // 페이지 본문에 원문 자막/전문이 들어 있다. 속성만 가져오면 정작 알맹이가 빠진다.
   async kbSources() {
     const pages = await queryAll(DB.kbSources);
-    return pages.map((p) => ({
-      id: p.id,
-      data: {
-        name: title(p, '소스명'),
-        sourceId: text(p, '소스ID'),
-        type: select(p, '유형'),
-        category: select(p, '카테고리'),
-        status: select(p, '상태'),
-        link: url(p, '원본링크'),
-        chunks: num(p, '청크수') ?? 0,
-        tags: multi(p, '태그'),
-        memo: text(p, '메모'),
-        addedAt: p.properties?.['추가일']?.date?.start || '',
-        createdAt: created(p),
-        notionUrl: p.url || '',
-      },
-    }));
+    const docs = [];
+    for (const p of pages) {
+      const lines = await pageLines(p.id);
+      // '원문 자막' 같은 헤딩 줄은 pageLines 가 이미 걸러낸다(heading 은 rich_text 를
+      // 갖지만 본문과 섞이면 지저분해서 그대로 둔다 — 검색·보관 목적엔 무해).
+      let transcript = lines.join('\n');
+
+      // Firestore 문서 상한은 1MiB. 한글은 UTF-8 로 3바이트라 넉넉히 잘라둔다.
+      const LIMIT = 900 * 1024;
+      let truncated = false;
+      if (Buffer.byteLength(transcript, 'utf8') > LIMIT) {
+        // 바이트 기준으로 자르되 글자가 깨지지 않게 뒤에서 줄여나간다.
+        let cut = transcript.length;
+        while (cut > 0 && Buffer.byteLength(transcript.slice(0, cut), 'utf8') > LIMIT) {
+          cut = Math.floor(cut * 0.95);
+        }
+        transcript = transcript.slice(0, cut);
+        truncated = true;
+      }
+
+      docs.push({
+        id: p.id,
+        data: {
+          name: title(p, '소스명'),
+          sourceId: text(p, '소스ID'),
+          type: select(p, '유형'),
+          category: select(p, '카테고리'),
+          status: select(p, '상태'),
+          link: url(p, '원본링크'),
+          chunks: num(p, '청크수') ?? 0,
+          tags: multi(p, '태그'),
+          memo: text(p, '메모'),
+          addedAt: p.properties?.['추가일']?.date?.start || '',
+          transcript,
+          transcriptChars: transcript.length,
+          transcriptTruncated: truncated,
+          createdAt: created(p),
+          notionUrl: p.url || '',
+        },
+      });
+      await sleep(350);
+    }
+    return docs;
   },
 
   // 답변 품질 로그
@@ -294,7 +322,7 @@ async function main() {
       const docs = await migrators[name]();
       const written = await writeAll(db, name, docs);
       const empty = docs.filter((d) => {
-        const b = d.data.body ?? d.data.answer;
+        const b = d.data.body ?? d.data.answer ?? d.data.transcript;
         return Array.isArray(b) ? b.length === 0 : !b;
       }).length;
       console.log(`${docs.length}건 읽음 → ${DRY ? '0' : written}건 기록${empty ? ` (본문 없음 ${empty}건)` : ''}`);
