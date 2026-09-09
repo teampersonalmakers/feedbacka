@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Personalmakers AI 코치</title>
+<link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700&family=Noto+Serif+KR:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #f9f7f4;
+  --paper: #ffffff;
+  --border: #ebe6dc;
+  --border-dark: #d4cdc0;
+  --ink: #1c1a17;
+  --ink-mid: #4a4540;
+  --ink-light: #9a9288;
+  --accent: #c8622a;
+  --accent-soft: #faf0ea;
+  --accent-border: #e8c4a8;
+  --warm-dark: #3d2e22;
+  --success: #2d7a4a;
+  --r: 12px;
+  --font: 'Pretendard', 'Apple SD Gothic Neo', sans-serif;
+  --serif: 'Noto Serif KR', Georgia, serif;
+  --mono: 'JetBrains Mono', monospace;
+  --shadow: 0 2px 8px rgba(0,0,0,.06), 0 8px 32px rgba(0,0,0,.04);
+}
+
+body { background: var(--bg); color: var(--ink); font-family: var(--font); min-height: 100vh; display: flex; flex-direction: column; }
+
+/* ─── Header ─── */
+.header {
+  background: var(--warm-dark);
+  padding: 20px 32px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.header-brand { display: flex; align-items: center; gap: 14px; }
+.header-avatar {
+  width: 40px; height: 40px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), #e8885a);
+  display: grid; place-items: center; font-size: 18px; flex-shrink: 0;
+}
+.header-name { font-family: var(--serif); font-size: 18px; color: #f5f0e8; letter-spacing: -0.3px; }
+.header-sub { font-size: 11px; color: rgba(255,255,255,.45); font-family: var(--mono); margin-top: 2px; }
+.header-badge { background: rgba(200,98,42,.25); border: 1px solid rgba(200,98,42,.4); color: #e8a878; font-size: 10px; font-weight: 700; padding: 4px 10px; border-radius: 20px; letter-spacing: 0.5px; }
+
+/* ─── Intro ─── */
+.intro {
+  background: var(--warm-dark);
+  padding: 0 32px 36px;
+  text-align: center;
+}
+.intro h1 { font-family: var(--serif); font-size: 28px; color: #f5f0e8; letter-spacing: -0.5px; margin-bottom: 10px; }
+.intro p { font-size: 14px; color: rgba(255,255,255,.5); line-height: 1.75; max-width: 480px; margin: 0 auto 24px; }
+
+/* Category pills */
+.cat-pills { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.cat-pill {
+  padding: 8px 16px; border-radius: 20px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.06);
+  color: rgba(255,255,255,.6);
+  font-family: var(--font); font-size: 12px; font-weight: 500;
+  cursor: pointer; transition: all .2s;
+}
+.cat-pill:hover { border-color: rgba(200,98,42,.5); color: #e8a878; background: rgba(200,98,42,.1); }
+.cat-pill.active { border-color: var(--accent); background: rgba(200,98,42,.2); color: #e8a878; font-weight: 700; }
+
+/* ─── Main ─── */
+.main { flex: 1; max-width: 780px; width: 100%; margin: 0 auto; padding: 32px 24px; display: flex; flex-direction: column; gap: 20px; }
+
+/* ─── Input card ─── */
+.input-card {
+  background: var(--paper); border: 1px solid var(--border);
+  border-radius: var(--r); overflow: hidden; box-shadow: var(--shadow);
+}
+.input-card-header {
+  padding: 14px 20px; border-bottom: 1px solid var(--border);
+  background: var(--bg); display: flex; align-items: center; gap: 8px;
+}
+.input-card-title { font-size: 12px; font-weight: 700; color: var(--ink-light); letter-spacing: 0.5px; text-transform: uppercase; }
+.input-cat-badge { font-size: 11px; font-family: var(--mono); background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent-border); padding: 2px 8px; border-radius: 4px; font-weight: 700; }
+
+.input-body { padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+
+textarea.q-input {
+  width: 100%; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 8px; padding: 14px 16px; color: var(--ink);
+  font-family: var(--font); font-size: 14px; line-height: 1.8;
+  outline: none; resize: vertical; min-height: 140px;
+  transition: border-color .15s, box-shadow .15s;
+}
+textarea.q-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(200,98,42,.08); }
+textarea.q-input::placeholder { color: var(--ink-light); }
+
+.mode-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.mode-btn {
+  padding: 10px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--bg); color: var(--ink-mid); font-family: var(--font);
+  font-size: 12px; font-weight: 500; cursor: pointer; transition: all .15s; text-align: center;
+}
+.mode-btn small { display: block; font-size: 10px; opacity: .6; margin-top: 2px; }
+.mode-btn.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+
+.char-info { font-size: 11px; color: var(--ink-light); font-family: var(--mono); text-align: right; }
+
+.submit-btn {
+  width: 100%; padding: 14px; border: none; border-radius: 8px;
+  background: var(--accent); color: white;
+  font-family: var(--serif); font-size: 15px; font-weight: 600;
+  cursor: pointer; transition: all .2s; letter-spacing: -0.2px;
+}
+.submit-btn:hover:not(:disabled) { background: #b8551f; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(200,98,42,.3); }
+.submit-btn:disabled { opacity: .4; cursor: not-allowed; transform: none; box-shadow: none; }
+
+/* ─── Feedback card ─── */
+.feedback-card {
+  background: var(--paper); border: 1px solid var(--border);
+  border-radius: var(--r); overflow: hidden; box-shadow: var(--shadow);
+  animation: fadeUp .4s ease;
+}
+@keyframes fadeUp { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:none} }
+
+.fb-header {
+  padding: 14px 20px; border-bottom: 1px solid var(--border);
+  background: var(--bg); display: flex; align-items: center; gap: 10px;
+}
+.fb-avatar { width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg,var(--accent),#e8885a); display: grid; place-items: center; font-size: 13px; flex-shrink: 0; }
+.fb-from { font-size: 12px; font-weight: 700; }
+.fb-cat { font-size: 10px; color: var(--ink-light); font-family: var(--mono); }
+.fb-time { font-size: 10px; color: var(--ink-light); font-family: var(--mono); margin-left: auto; }
+.copy-btn { background: transparent; border: 1px solid var(--border); border-radius: 5px; padding: 3px 10px; font-size: 10px; color: var(--ink-light); cursor: pointer; font-family: var(--mono); transition: all .15s; }
+.copy-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+.fb-body { padding: 22px 24px; font-size: 14.5px; line-height: 1.9; color: var(--ink); white-space: pre-wrap; }
+
+.fb-sources {
+  padding: 12px 20px; border-top: 1px solid var(--border); background: var(--bg);
+}
+.fb-src-label { font-size: 10px; color: var(--ink-light); font-family: var(--mono); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px; }
+.src-tag { display: inline-block; font-size: 10px; font-family: var(--mono); background: var(--paper); border: 1px solid var(--border); padding: 2px 8px; border-radius: 4px; margin: 2px 3px 2px 0; color: var(--ink-mid); }
+
+/* Loading */
+.loading-card {
+  background: var(--paper); border: 1px solid var(--border);
+  border-radius: var(--r); padding: 40px; text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+  box-shadow: var(--shadow);
+}
+.spinner { width: 32px; height: 32px; border: 2.5px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to{transform:rotate(360deg)} }
+.loading-txt { font-size: 13px; color: var(--ink-mid); }
+.loading-sub { font-size: 11px; color: var(--ink-light); font-family: var(--mono); line-height: 1.8; }
+
+/* Error */
+.err-card { background: #fdecea; border: 1px solid #f5c6c0; border-radius: var(--r); padding: 16px 20px; font-size: 13px; color: #c0392b; font-family: var(--mono); }
+
+/* History nav */
+.history-nav { display: flex; gap: 6px; align-items: center; }
+.hist-label { font-size: 11px; color: var(--ink-light); font-family: var(--mono); }
+.clear-hist { background: transparent; border: none; font-size: 11px; color: var(--ink-light); cursor: pointer; font-family: var(--mono); text-decoration: underline; }
+.clear-hist:hover { color: var(--accent); }
+
+/* Empty state */
+.empty-state {
+  text-align: center; padding: 48px 24px; color: var(--ink-light);
+}
+.empty-icon { font-size: 44px; opacity: .2; margin-bottom: 12px; }
+.empty-title { font-family: var(--serif); font-size: 18px; color: var(--ink); opacity: .35; margin-bottom: 8px; }
+.empty-desc { font-size: 13px; line-height: 1.7; max-width: 300px; margin: 0 auto; }
+
+/* Responsive */
+@media (max-width: 600px) {
+  .header { padding: 16px 20px; }
+  .intro { padding: 0 20px 28px; }
+  .intro h1 { font-size: 22px; }
+  .main { padding: 20px 16px; }
+  .mode-row { grid-template-columns: 1fr; }
+}
+
+/* ─── Password Gate ─── */
+#pwGate {
+  position: fixed; inset: 0; z-index: 9999;
+  background: #1c1a17;
+  display: flex; align-items: center; justify-content: center;
+}
+.pw-box {
+  background: #262320; border: 1px solid #3a3530;
+  border-radius: 16px; padding: 44px 40px;
+  text-align: center; width: 100%; max-width: 360px;
+  display: flex; flex-direction: column; align-items: center; gap: 20px;
+}
+.pw-logo { font-size: 38px; opacity: .9; }
+.pw-title { font-family: 'Noto Serif KR', Georgia, serif; font-size: 22px; color: #f5f0e8; letter-spacing: -0.3px; }
+.pw-sub { font-size: 12px; color: rgba(255,255,255,.35); font-family: 'JetBrains Mono', monospace; }
+.pw-input-wrap { width: 100%; position: relative; }
+.pw-input {
+  width: 100%; background: #1c1a17; border: 1px solid #3a3530;
+  border-radius: 10px; padding: 14px 18px; color: #f5f0e8;
+  font-size: 22px; font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 6px; text-align: center; outline: none;
+  transition: border-color .2s;
+}
+.pw-input:focus { border-color: #c8622a; }
+.pw-input.shake { animation: shake .4s ease; }
+.pw-input.error { border-color: #c0392b; color: #ff8099; }
+@keyframes shake {
+  0%,100%{transform:translateX(0)}
+  20%{transform:translateX(-8px)}
+  40%{transform:translateX(8px)}
+  60%{transform:translateX(-6px)}
+  80%{transform:translateX(6px)}
+}
+.pw-btn {
+  width: 100%; padding: 13px; border: none; border-radius: 10px;
+  background: #c8622a; color: white;
+  font-family: 'Pretendard', sans-serif; font-size: 15px; font-weight: 700;
+  cursor: pointer; transition: all .2s; letter-spacing: -0.2px;
+}
+.pw-btn:hover { background: #b8551f; transform: translateY(-1px); }
+.pw-err { font-size: 12px; color: #ff8099; font-family: 'JetBrains Mono', monospace; height: 16px; }
+</style>
+</head>
+<body>
+
+<!-- Password Gate -->
+<div id="pwGate">
+  <div class="pw-box">
+    <div class="pw-logo">✨</div>
+    <div class="pw-title">Personalmakers AI</div>
+    <div class="pw-sub">Personalmakers AI · 비밀번호를 입력해주세요</div>
+    <div class="pw-input-wrap">
+      <input class="pw-input" id="pwInput" type="password" maxlength="10"
+        placeholder="••••" onkeydown="if(event.key==='Enter')checkPW()" autofocus />
+    </div>
+    <div class="pw-err" id="pwErr"></div>
+    <button class="pw-btn" onclick="checkPW()">입장하기</button>
+  </div>
+</div>
+
+
+<div class="header">
+  <div class="header-brand">
+    <div class="header-avatar">✨</div>
+    <div>
+      <div class="header-name">Personalmakers AI 코치</div>
+      <div class="header-sub">Coming Soon AI · Powered by Claude</div>
+    </div>
+  </div>
+  <div class="header-badge">MEMBERSHIP</div>
+</div>
+
+<div class="intro">
+  <h1>유튜브 브랜딩 & 콘텐츠<br>AI 코칭</h1>
+  <p>Personalmakers AI 철학과 200개 이상의 콘텐츠를 학습한 AI가<br>당신의 채널과 콘텐츠를 직접 피드백해드립니다.</p>
+  <div class="cat-pills">
+    <button class="cat-pill active" data-cat="channel" onclick="selectCat(this)">🎬 채널 콘셉트</button>
+    <button class="cat-pill" data-cat="content" onclick="selectCat(this)">📝 콘텐츠 기획</button>
+    <button class="cat-pill" data-cat="script" onclick="selectCat(this)">🎙 대본 피드백</button>
+    <button class="cat-pill" data-cat="thumbnail" onclick="selectCat(this)">🖼 썸네일·제목</button>
+    <button class="cat-pill" data-cat="monetization" onclick="selectCat(this)">💰 수익화 전략</button>
+    <button class="cat-pill" data-cat="operation" onclick="selectCat(this)">⚙️ 채널 운영</button>
+    <button class="cat-pill" data-cat="free" onclick="selectCat(this)">💬 자유 질문</button>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- Input -->
+  <div class="input-card">
+    <div class="input-card-header">
+      <span class="input-card-title">질문 입력</span>
+      <span class="input-cat-badge" id="catBadge">🎬 채널 콘셉트</span>
+    </div>
+    <div class="input-body">
+      <textarea class="q-input" id="questionInput" rows="5"
+        oninput="onInput()"
+        placeholder="채널 콘셉트, 콘텐츠 아이디어, 대본, 고민 등을 자유롭게 입력하세요.
+
+구체적으로 적을수록 더 정확한 피드백을 받을 수 있어요.
+
+예시:
+채널명: 퇴근 후 한 시간
+타겟: 30대 직장인 남성
+콘셉트: 퇴근 후 부업으로 월 100만원 만드는 법
+고민: 너무 흔한 주제 같아서 차별화가 고민됩니다..."></textarea>
+      <div class="char-info"><span id="charCount">0</span>자</div>
+
+      <div class="mode-row">
+        <button class="mode-btn active" id="modeConv" onclick="setMode('conv')">
+          💬 대화형 피드백
+          <small>Personalmakers AI가 직접 말하듯</small>
+        </button>
+        <button class="mode-btn" id="modeStruct" onclick="setMode('structured')">
+          📋 구조화 피드백
+          <small>핵심 / 액션 / 한마디</small>
+        </button>
+      </div>
+
+      <button class="submit-btn" id="submitBtn" onclick="handleSubmit()" disabled>
+        Personalmakers AI에게 피드백 받기 →
+      </button>
+    </div>
+  </div>
+
+  <!-- Results area -->
+  <div id="resultsArea">
+    <div class="empty-state">
+      <div class="empty-icon">✨</div>
+      <div class="empty-title">피드백을 기다리고 있어요</div>
+      <div class="empty-desc">위에 채널 정보나 고민을 입력하고 피드백을 받아보세요</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+let selectedCat = 'channel';
+let selectedMode = 'conv';
+let isLoading = false;
+
+const CAT_LABELS = {
+  channel:'🎬 채널 콘셉트', content:'📝 콘텐츠 기획', script:'🎙 대본',
+  thumbnail:'🖼 썸네일·제목', monetization:'💰 수익화', operation:'⚙️ 채널 운영', free:'💬 자유 질문'
+};
+
+// ─── Category ─────────────────────────────────────────────────────────────────
+function selectCat(btn) {
+  document.querySelectorAll('.cat-pill').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  selectedCat = btn.dataset.cat;
+  document.getElementById('catBadge').textContent = CAT_LABELS[selectedCat] || selectedCat;
+  updatePlaceholder();
+}
+
+function updatePlaceholder() {
+  const placeholders = {
+    channel: '채널명, 타겟, 콘셉트, 왜 이 채널을 시작하려는지를 적어주세요.\n\n구체적으로 적을수록 더 정확한 피드백을 드릴 수 있어요.',
+    content: '기획 중인 콘텐츠 아이디어나 제목, 타겟 시청자, 다루려는 내용을 적어주세요.',
+    script: '피드백받고 싶은 대본이나 스크립트를 붙여넣어 주세요.',
+    thumbnail: '썸네일 컨셉이나 제목 아이디어를 적어주세요. 여러 개 옵션을 주셔도 됩니다.',
+    monetization: '현재 채널 상황과 수익화 관련 고민이나 계획을 적어주세요.',
+    operation: '채널 운영 관련 고민, 현재 상황, 구체적인 질문을 적어주세요.',
+    free: 'Personalmakers AI에게 하고 싶은 질문이나 고민을 자유롭게 적어주세요.',
+  };
+  document.getElementById('questionInput').placeholder = placeholders[selectedCat] || '질문을 입력하세요...';
+}
+
+// ─── Mode ────────────────────────────────────────────────────────────────────
+function setMode(m) {
+  selectedMode = m;
+  document.getElementById('modeConv').classList.toggle('active', m==='conv');
+  document.getElementById('modeStruct').classList.toggle('active', m==='structured');
+}
+
+// ─── Input ───────────────────────────────────────────────────────────────────
+function onInput() {
+  const len = document.getElementById('questionInput').value.length;
+  document.getElementById('charCount').textContent = len.toLocaleString();
+  document.getElementById('submitBtn').disabled = len < 10 || isLoading;
+}
+
+// ─── Submit ───────────────────────────────────────────────────────────────────
+async function handleSubmit() {
+  const question = document.getElementById('questionInput').value.trim();
+  if (!question || isLoading) return;
+
+  isLoading = true;
+  document.getElementById('submitBtn').disabled = true;
+
+  const resultsArea = document.getElementById('resultsArea');
+  resultsArea.innerHTML = `
+    <div class="loading-card">
+      <div class="spinner"></div>
+      <div class="loading-txt">Personalmakers AI 관점으로 분석 중...</div>
+      <div class="loading-sub">관련 콘텐츠 검색 중<br>피드백 작성 중</div>
+    </div>
+  `;
+
+  try {
+    // 1. 질문 임베딩
+    const embedRes = await fetch('/api/embed', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ texts: [question + ' ' + selectedCat], taskType: 'RETRIEVAL_QUERY' }),
+    });
+    const embedData = await embedRes.json();
+    if (embedData.error) throw new Error(embedData.error);
+
+    // 2. 지식베이스에서 검색
+    const hits = await retrieveFromKB(embedData.embeddings[0]);
+
+    // 3. 피드백 생성
+    const fbRes = await fetch('/api/feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question, category: selectedCat, mode: selectedMode, hits, isPublic: true }),
+    });
+    const fbData = await fbRes.json();
+    if (fbData.error) throw new Error(fbData.error);
+
+    showFeedback({ question, answer: fbData.feedback, cat: selectedCat, mode: selectedMode, sources: hits, time: new Date().toLocaleString('ko-KR') });
+
+  } catch(e) {
+    resultsArea.innerHTML = `<div class="err-card">⚠️ ${esc(e.message)}<br><br>잠시 후 다시 시도해주세요.</div>`;
+  } finally {
+    isLoading = false;
+    document.getElementById('submitBtn').disabled = false;
+    onInput();
+  }
+}
+
+// ─── KB Retrieval ─────────────────────────────────────────────────────────────
+let kb = null;
+async function loadKB() {
+  try {
+    const res = await fetch('/knowledge/base.json');
+    kb = await res.json();
+  } catch(e) { kb = { documents: [] }; }
+}
+
+function cosineSim(a, b) {
+  let dot=0, na=0, nb=0;
+  for(let i=0;i<a.length;i++){dot+=a[i]*b[i];na+=a[i]*a[i];nb+=b[i]*b[i];}
+  return dot/(Math.sqrt(na)*Math.sqrt(nb)+1e-10);
+}
+
+function retrieveFromKB(qVec, topK=6) {
+  if (!kb?.documents) return [];
+  const results = [];
+  for (const doc of kb.documents) {
+    for (const chunk of (doc.chunks||[])) {
+      if (!chunk.embedding) continue;
+      results.push({ docName: doc.name, docType: doc.type, text: chunk.text, score: cosineSim(qVec, chunk.embedding) });
+    }
+  }
+  return results.sort((a,b)=>b.score-a.score).slice(0,topK);
+}
+
+// ─── Show Feedback ────────────────────────────────────────────────────────────
+function showFeedback(record) {
+  const resultsArea = document.getElementById('resultsArea');
+  const card = document.createElement('div');
+  card.className = 'feedback-card';
+  card.innerHTML = `
+    <div class="fb-header">
+      <div class="fb-avatar">✨</div>
+      <div>
+        <div class="fb-from">Personalmakers AI</div>
+        <div class="fb-cat">${CAT_LABELS[record.cat]||record.cat}</div>
+      </div>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+        <span class="fb-time">${record.time}</span>
+        <button class="copy-btn" onclick="copyText(this, \`${esc(record.answer)}\`)">복사</button>
+      </div>
+    </div>
+    <div class="fb-body">${esc(record.answer)}</div>
+    ${record.sources?.length > 0 ? `
+    <div class="fb-sources">
+      <div class="fb-src-label">📎 참고한 콘텐츠</div>
+      ${record.sources.map(s=>`<span class="src-tag">${esc(s.docName)}</span>`).join('')}
+    </div>` : ''}
+  `;
+  resultsArea.innerHTML = '';
+  resultsArea.appendChild(card);
+  card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function copyText(btn, text) {
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = '✅ 복사됨';
+    setTimeout(() => btn.textContent = '복사', 1500);
+  });
+}
+
+function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/`/g,'\\`'); }
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+loadKB();
+updatePlaceholder();
+
+// ─── Password Gate ────────────────────────────────────────────────────────────
+(function() {
+  const PW = '0730';
+  const KEY = 'pm_auth_v1';
+  // 이미 인증됐으면 바로 통과
+  if (sessionStorage.getItem(KEY) === 'ok') {
+    document.getElementById('pwGate').style.display = 'none';
+    return;
+  }
+  window.checkPW = function() {
+    const val = document.getElementById('pwInput').value;
+    if (val === PW) {
+      sessionStorage.setItem(KEY, 'ok');
+      const gate = document.getElementById('pwGate');
+      gate.style.opacity = '0';
+      gate.style.transition = 'opacity .3s';
+      setTimeout(() => gate.style.display = 'none', 300);
+    } else {
+      const inp = document.getElementById('pwInput');
+      const err = document.getElementById('pwErr');
+      inp.classList.add('shake', 'error');
+      err.textContent = '비밀번호가 맞지 않아요';
+      setTimeout(() => { inp.classList.remove('shake', 'error'); err.textContent = ''; inp.value = ''; }, 1200);
+    }
+  };
+})();
+</script>
+</body>
+</html>

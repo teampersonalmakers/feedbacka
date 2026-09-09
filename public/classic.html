@@ -1,0 +1,1161 @@
+
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Personalmakers AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700&family=Noto+Serif+KR:wght@400;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #f8fafc;
+  --paper: #f8fafc;
+  --surface: #ffffff;
+  --border: #e8e3d8;
+  --border-dark: #d0c9b8;
+  --ink: #1a1714;
+  --ink-mid: #4a443c;
+  --ink-light: #8a8178;
+  --accent: #2563eb;
+  --accent-soft: #eff6ff;
+  --accent-border: #bfdbfe;
+  --blue: #1d4ed8;
+  --blue-soft: #eff6ff;
+  --green: #2a7a4a;
+  --green-soft: #e8f5ed;
+  --r: 8px;
+  --font: 'Pretendard', 'Apple SD Gothic Neo', sans-serif;
+  --serif: 'Noto Serif KR', Georgia, serif;
+  --mono: 'JetBrains Mono', monospace;
+  --shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
+}
+
+body {
+  background: var(--bg);
+  background-image:
+    radial-gradient(circle at 15% 15%, rgba(37,99,235,.05) 0%, transparent 50%),
+    radial-gradient(circle at 85% 85%, rgba(37,99,235,.03) 0%, transparent 50%);
+  color: var(--ink);
+  font-family: var(--font);
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ─── Top Bar ─── */
+.top-bar {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0 32px;
+  display: flex; align-items: center; justify-content: space-between;
+  height: 56px; flex-shrink: 0;
+}
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand-badge {
+  background: var(--accent); color: white;
+  font-size: 10px; font-weight: 700; padding: 3px 8px;
+  border-radius: 4px; letter-spacing: 0.5px;
+}
+.brand-name { font-family: var(--serif); font-size: 16px; letter-spacing: -0.3px; }
+.brand-sub {
+  font-size: 11px; color: var(--ink-light); font-family: var(--mono);
+  border-left: 1px solid var(--border); padding-left: 10px; margin-left: 2px;
+}
+.kb-status {
+  font-size: 11px; color: var(--ink-light); font-family: var(--mono);
+  display: flex; align-items: center; gap: 6px;
+}
+.kb-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+/* ─── Main Layout ─── */
+.main {
+  display: grid;
+  grid-template-columns: 1fr 420px;
+  grid-template-rows: 1fr;
+  gap: 0;
+  height: calc(100vh - 56px);
+  overflow: hidden;
+  align-items: stretch;
+}
+
+/* ─── Left: Mission Input ─── */
+.mission-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-right: 1px solid var(--border);
+  height: 100%;
+}
+
+/* ─── Mission Footer ─── */
+.app-footer { display: none; }
+
+.mission-footer {
+  display: flex !important;
+  height: 64px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  align-items: center;
+  padding: 0 32px;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.mission-header {
+  padding: 24px 32px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.mission-title { font-family: var(--serif); font-size: 22px; letter-spacing: -0.5px; }
+.mission-sub { font-size: 12px; color: var(--ink-light); margin-top: 4px; }
+
+.mission-body {
+  overflow-y: auto; padding: 24px 32px;
+  display: flex; flex-direction: column; gap: 16px;
+  min-height: 0; flex: 1;
+}
+.mission-body::-webkit-scrollbar { width: 3px; }
+.mission-body::-webkit-scrollbar-thumb { background: var(--border-dark); }
+
+.field-group { display: flex; flex-direction: column; gap: 5px; }
+.lbl {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.6px;
+  text-transform: uppercase; color: var(--ink-light); display: block;
+}
+
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+input.inp, select.sel, textarea.txa {
+  width: 100%; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r); padding: 10px 12px; color: var(--ink);
+  font-family: var(--font); font-size: 13px; outline: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+input.inp:focus, select.sel:focus, textarea.txa:focus {
+  border-color: var(--accent); box-shadow: 0 0 0 3px rgba(37,99,235,.08);
+}
+input.inp::placeholder, textarea.txa::placeholder { color: var(--ink-light); }
+textarea.txa { resize: vertical; line-height: 1.7; }
+
+.mission-txa {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r); padding: 14px 16px; color: var(--ink);
+  font-family: var(--font); font-size: 14px; line-height: 1.8;
+  outline: none; resize: vertical; min-height: 160px;
+  transition: border-color .15s, box-shadow .15s; width: 100%;
+}
+.mission-txa:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(37,99,235,.08); }
+.mission-txa::placeholder { color: var(--ink-light); }
+
+.char-count { font-size: 11px; color: var(--ink-light); font-family: var(--mono); text-align: right; margin-top: 3px; }
+
+.mode-toggle { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.mode-btn {
+  padding: 11px 12px; border-radius: var(--r); border: 1px solid var(--border);
+  background: var(--surface); color: var(--ink-mid); font-family: var(--font);
+  font-size: 12px; font-weight: 500; cursor: pointer; transition: all .15s; text-align: center;
+}
+.mode-btn.active { border-color: var(--blue); background: var(--blue-soft); color: var(--blue); font-weight: 600; }
+.mode-btn:hover:not(.active) { border-color: var(--border-dark); }
+.mode-btn small { display: block; font-size: 10px; opacity: .65; margin-top: 2px; font-weight: 400; }
+
+.btn {
+  padding: 11px 20px; border: none; border-radius: var(--r);
+  font-family: var(--font); font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: all .15s;
+}
+.btn-primary { background: var(--accent); color: white; flex: 1; }
+.btn-primary:hover:not(:disabled) { background: #1d4ed8; box-shadow: 0 3px 10px rgba(37,99,235,.25); transform: translateY(-1px); }
+.btn-primary:disabled { opacity: .4; cursor: not-allowed; transform: none; box-shadow: none; }
+.btn-ghost { background: transparent; border: 1px solid var(--border); color: var(--ink-mid); }
+.btn-ghost:hover { background: var(--bg); border-color: var(--border-dark); }
+
+/* ─── Right: Feedback Output ─── */
+.feedback-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--paper);
+  min-height: 0;
+}
+
+.feedback-header {
+  padding: 16px 24px 12px; background: var(--surface);
+  border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.feedback-htitle { font-size: 12px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; color: var(--ink-light); }
+.feedback-hsub { font-size: 11px; color: var(--ink-light); font-family: var(--mono); margin-top: 2px; }
+
+.feedback-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.feedback-body::-webkit-scrollbar { width: 3px; }
+.feedback-body::-webkit-scrollbar-thumb { background: var(--border-dark); }
+
+/* Empty state */
+.fb-empty {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  text-align: center; gap: 10px; color: var(--ink-light); padding: 40px 20px;
+}
+.fb-empty .icon { font-size: 40px; opacity: .2; }
+.fb-empty h3 { font-family: var(--serif); font-size: 16px; color: var(--ink); opacity: .35; }
+.fb-empty p { font-size: 12px; line-height: 1.7; max-width: 200px; }
+
+/* Loading */
+.fb-loading {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 14px; padding: 40px 20px;
+}
+.spinner {
+  width: 30px; height: 30px;
+  border: 2px solid var(--border); border-top-color: var(--accent);
+  border-radius: 50%; animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-label { font-size: 12px; font-family: var(--mono); color: var(--ink-mid); }
+.loading-steps { font-size: 11px; color: var(--ink-light); text-align: center; line-height: 1.8; }
+
+/* Feedback card */
+.fb-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; overflow: hidden;
+  box-shadow: var(--shadow); animation: fadeUp .35s ease; margin-bottom: 14px;
+  flex-shrink: 0;
+}
+@keyframes fadeUp { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
+
+.fb-meta {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 9px 14px; background: var(--bg); border-bottom: 1px solid var(--border);
+  font-size: 11px; color: var(--ink-light); font-family: var(--mono);
+}
+.fb-badge {
+  padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700;
+  background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent-border);
+}
+.fb-badge.struct { background: #f0eeeb; color: var(--ink-mid); border-color: var(--border-dark); }
+
+.fb-content {
+  padding: 18px 20px; font-size: 14px; line-height: 1.9;
+  color: var(--ink); white-space: pre-wrap;
+}
+
+.fb-sources {
+  padding: 10px 14px; border-top: 1px solid var(--border); background: var(--bg);
+}
+.fb-src-label { font-size: 10px; font-weight: 700; color: var(--ink-light); letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 5px; }
+.src-pill {
+  display: inline-block; font-size: 10px; font-family: var(--mono);
+  background: var(--surface); border: 1px solid var(--border);
+  padding: 2px 8px; border-radius: 4px; margin: 2px 3px 2px 0; color: var(--ink-mid);
+}
+
+/* Copy btn */
+.copy-btn {
+  background: none; border: 1px solid var(--border); border-radius: 5px;
+  padding: 3px 10px; font-size: 11px; color: var(--ink-light); cursor: pointer;
+  font-family: var(--mono); transition: all .15s;
+}
+.copy-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+/* Error */
+.err-box {
+  margin: 0 20px 12px;
+  background: #fdecea; border: 1px solid #f5c6c0;
+  border-radius: var(--r); padding: 10px 14px;
+  font-size: 12px; color: #c0392b; font-family: var(--mono);
+}
+
+/* KB empty warning */
+.kb-warning {
+  margin: 0 20px 12px;
+  background: #fff8e8; border: 1px solid #f0d88a;
+  border-radius: var(--r); padding: 10px 14px;
+  font-size: 12px; color: #8a6a00; font-family: var(--mono);
+  display: none;
+}
+
+/* ─── Follow-up ─── */
+.fb-followup { border-top: 1px solid var(--border); padding: 12px 16px; background: var(--bg); }
+.fb-followup-label { font-size: 10px; font-weight: 700; color: var(--ink-light); letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 8px; }
+.fb-followup-row { display: flex; gap: 8px; }
+.fb-followup-input { flex: 1; background: var(--surface); border: 1px solid var(--border); border-radius: 7px; padding: 9px 12px; font-family: var(--font); font-size: 13px; color: var(--ink); outline: none; transition: border-color .15s; }
+.fb-followup-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(37,99,235,.08); }
+.fb-followup-btn { background: var(--accent); color: white; border: none; border-radius: 7px; padding: 9px 16px; font-family: var(--font); font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; transition: all .15s; }
+.fb-followup-btn:hover { background: #1d4ed8; }
+.fb-followup-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+.fb-qa { border-top: 1px solid var(--border); }
+.fb-q { padding: 10px 16px; background: #eff6ff; border-left: 3px solid var(--accent); font-size: 12px; color: #1e40af; }
+.fb-q-label { font-size: 10px; font-weight: 700; color: var(--accent); letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 3px; }
+.fb-a { padding: 14px 16px; font-size: 14px; line-height: 1.9; color: var(--ink); white-space: pre-wrap; }
+
+/* ─── History Buttons ─── */
+.feedback-header { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+.hbtn { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px; font-size: 11px; font-family: var(--font); font-weight: 600; cursor: pointer; color: var(--ink-mid); transition: all .15s; white-space:nowrap; }
+.hbtn:hover { border-color: var(--accent); color: var(--accent); }
+.hbtn-danger:hover { border-color: #c0392b; color: #c0392b; }
+
+/* ─── Mission Preview in Card ─── */
+.fb-mission { background: var(--bg); border-radius: 6px; padding: 10px 14px; margin-bottom: 12px; border-left: 3px solid var(--accent); }
+.fb-mission-label { font-size: 10px; font-weight: 700; color: var(--accent); letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 5px; }
+.fb-mission-text { font-size: 12px; color: var(--ink-mid); line-height: 1.6; white-space: pre-wrap; }
+
+/* ─── Password Gate ─── */
+#pwGate {
+  position: fixed; inset: 0; z-index: 9999;
+  background: #1c1a17;
+  display: flex; align-items: center; justify-content: center;
+}
+.pw-box {
+  background: #262320; border: 1px solid #3a3530;
+  border-radius: 16px; padding: 44px 40px;
+  text-align: center; width: 100%; max-width: 360px;
+  display: flex; flex-direction: column; align-items: center; gap: 20px;
+}
+.pw-logo { font-size: 38px; opacity: .9; }
+.pw-title { font-family: 'Noto Serif KR', Georgia, serif; font-size: 22px; color: #f5f0e8; letter-spacing: -0.3px; }
+.pw-sub { font-size: 12px; color: rgba(255,255,255,.35); font-family: 'JetBrains Mono', monospace; }
+.pw-input-wrap { width: 100%; position: relative; }
+.pw-input {
+  width: 100%; background: #1c1a17; border: 1px solid #3a3530;
+  border-radius: 10px; padding: 14px 18px; color: #f5f0e8;
+  font-size: 22px; font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 6px; text-align: center; outline: none;
+  transition: border-color .2s;
+}
+.pw-input:focus { border-color: #2563eb; }
+.pw-input.shake { animation: shake .4s ease; }
+.pw-input.error { border-color: #c0392b; color: #ff8099; }
+@keyframes shake {
+  0%,100%{transform:translateX(0)}
+  20%{transform:translateX(-8px)}
+  40%{transform:translateX(8px)}
+  60%{transform:translateX(-6px)}
+  80%{transform:translateX(6px)}
+}
+.pw-btn {
+  width: 100%; padding: 13px; border: none; border-radius: 10px;
+  background: #2563eb; color: white;
+  font-family: 'Pretendard', sans-serif; font-size: 15px; font-weight: 700;
+  cursor: pointer; transition: all .2s; letter-spacing: -0.2px;
+}
+.pw-btn:hover { background: #1d4ed8; transform: translateY(-1px); }
+.pw-err { font-size: 12px; color: #ff8099; font-family: 'JetBrains Mono', monospace; height: 16px; }
+/* ─── 이미지 OCR 업로드 영역 ─────────────────────────────────── */
+.img-upload-zone {
+  border: 2px dashed var(--border-dark);
+  border-radius: 12px;
+  padding: 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all .2s;
+  background: var(--bg);
+  position: relative;
+}
+.img-upload-zone:hover, .img-upload-zone.dragover {
+  border-color: var(--accent);
+  background: rgba(37, 99, 235, 0.04);
+}
+.img-upload-zone .upload-icon { font-size: 28px; margin-bottom: 6px; }
+.img-upload-zone .upload-title {
+  font-size: 13px; font-weight: 600; color: var(--ink);
+}
+.img-upload-zone .upload-sub {
+  font-size: 11px; color: var(--ink-light); margin-top: 2px;
+}
+.img-upload-zone input[type="file"] {
+  position: absolute; inset: 0; opacity: 0; cursor: pointer;
+}
+.img-preview-wrap {
+  display: none; margin-top: 10px; position: relative;
+}
+.img-preview-wrap img {
+  max-width: 100%; max-height: 200px; border-radius: 8px;
+  border: 1px solid var(--border);
+}
+.img-preview-wrap .img-remove {
+  position: absolute; top: -6px; right: -6px;
+  background: #ef4444; color: white; border: none;
+  border-radius: 50%; width: 22px; height: 22px;
+  font-size: 12px; cursor: pointer; line-height: 22px;
+  text-align: center;
+}
+.img-status {
+  font-size: 11px; margin-top: 6px; color: var(--ink-light);
+  min-height: 16px;
+}
+.img-status.extracting { color: var(--accent); }
+.img-status.done { color: #16a34a; }
+.img-status.error { color: #ef4444; }
+</style>
+<style>
+.fb-meta{align-items:center;gap:6px}
+.fb-meta button,.fb-card button,.fb-badge{white-space:nowrap;flex-shrink:0}
+.fb-meta button{border:1px solid #e3e6ee;border-radius:8px;background:#fff;padding:5px 11px;font-size:12.5px;color:#4a5568;cursor:pointer;transition:all .15s;line-height:1.3}
+.fb-meta button:hover{background:#f5f7fb;border-color:#c9d2e3}
+</style>
+</head>
+<body>
+
+<!-- Password Gate -->
+<div id="pwGate">
+  <div class="pw-box">
+    <div class="pw-logo">✨</div>
+    <div class="pw-title">Personalmakers AI</div>
+    <div class="pw-sub">Personalmakers AI · 비밀번호를 입력해주세요</div>
+    <div class="pw-input-wrap">
+      <input class="pw-input" id="pwInput" type="password" maxlength="10"
+        placeholder="••••" onkeydown="if(event.key==='Enter')checkPW()" autofocus />
+    </div>
+    <div class="pw-err" id="pwErr"></div>
+    <button class="pw-btn" onclick="checkPW()">입장하기</button>
+  </div>
+</div>
+
+
+<div class="top-bar">
+  <div class="brand">
+    <div class="brand-badge">Personalmakers AI</div>
+    <div class="brand-name">피드백 어시스턴트</div>
+    <div class="brand-sub">Director's Tool</div>
+  </div>
+  <div class="kb-status" id="kbStatus">
+    <div class="kb-dot"></div>
+    <span id="kbStatusTxt">지식베이스 로딩 중...</span>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- ── 미션 입력 ── -->
+  <div class="mission-panel">
+    <div class="mission-header">
+      <div class="mission-title">수강생 미션 피드백</div>
+      <div class="mission-sub">수강생의 제출 내용을 입력하고 Personalmakers AI 관점으로 피드백을 받으세요</div>
+    </div>
+
+    <div class="mission-body">
+      <div class="row2">
+        <div class="field-group">
+          <label class="lbl">수강생 이름 (선택)</label>
+          <input type="text" class="inp" id="studentName" placeholder="예: 홍길동 수강생" />
+        </div>
+        <div class="field-group">
+          <label class="lbl">미션 유형</label>
+          <select class="sel" id="missionType">
+            <option value="channel">채널 기획</option>
+            <option value="content">콘텐츠 기획</option>
+            <option value="free">자유 질문</option>
+          </select>
+        </div>
+      </div>
+
+          <!-- ─── 이미지 OCR 업로드 영역 ─── -->
+          <div class="field-group">
+            <label class="lbl">📸 이미지로 제출 내용 입력 (선택)</label>
+            <div class="img-upload-zone" id="imgDropZone"
+                 ondragover="handleDragOver(event)"
+                 ondragleave="handleDragLeave(event)"
+                 ondrop="handleDrop(event)">
+              <input type="file" id="imgFileInput" accept="image/jpeg,image/png,image/webp,image/gif"
+                     onchange="handleFileSelect(event)" />
+              <div class="upload-icon">📷</div>
+              <div class="upload-title">이미지를 드래그하거나 클릭해서 업로드</div>
+              <div class="upload-sub">수강생 워크시트 캡처본 (JPG, PNG, WebP) · 최대 10MB</div>
+            </div>
+            <div class="img-preview-wrap" id="imgPreviewWrap">
+              <img id="imgPreview" src="" alt="미리보기" />
+              <button class="img-remove" onclick="removeImage()" title="이미지 삭제">✕</button>
+            </div>
+            <div class="img-status" id="imgStatus"></div>
+          </div>
+      <div class="field-group">
+        <label class="lbl">수강생 제출 내용 *</label>
+        <textarea class="mission-txa" id="missionContent" rows="7"
+          oninput="onMissionInput()"
+          placeholder="수강생이 제출한 미션 내용을 여기에 붙여넣으세요.
+
+예시:
+채널명: 퇴근후 한 시간
+타겟: 30대 직장인 남성
+콘셉트: 퇴근 후 작은 수익을 만드는 현실적인 방법들
+왜 시작하려는가: 저도 월급만으론 불안했고, 그 불안을 해결한 방법을 나누고 싶어서요..."></textarea>
+        <div class="char-count" id="charCount">0자</div>
+      </div>
+
+      <div class="field-group">
+        <label class="lbl">디렉터 추가 메모 (선택)</label>
+        <textarea class="txa" id="extraContext" style="min-height:70px"
+          placeholder="특별히 집중해서 봐야 할 포인트, 수강생 배경, 이전 피드백 내용 등을 적어주세요."></textarea>
+      </div>
+
+      <div class="field-group">
+        <label class="lbl">피드백 스타일</label>
+        <div class="mode-toggle">
+          <button class="mode-btn active" id="modeConv" onclick="setMode('conv')">
+            💬 구어체 대화형
+            <small>Personalmakers AI가 직접 말하듯</small>
+          </button>
+          <button class="mode-btn" id="modeStruct" onclick="setMode('struct')">
+            📋 구조화 피드백
+            <small>강점 / 디깅 포인트 / 다음 스텝</small>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="mission-footer">
+      <button class="btn btn-ghost" onclick="clearForm()">초기화</button>
+      <button class="btn btn-primary" id="feedbackBtn" onclick="handleFeedback()" disabled>
+        Personalmakers AI 피드백 받기 →
+      </button>
+    </div>
+
+  </div>
+
+  <!-- ── 피드백 출력 ── -->
+  <div class="feedback-panel">
+    <div class="feedback-header">
+      <div>
+        <div class="feedback-htitle">✍️ 피드백 결과</div>
+        <div class="feedback-hsub" id="fbSub">미션 내용을 입력하고 생성을 눌러주세요</div>
+      </div>
+      <div style="display:flex;gap:6px" id="historyBtns">
+        <button class="hbtn" onclick="copyAllHistory()" title="전체 클립보드 복사">📋 복사</button>
+        <button class="hbtn" onclick="exportTxt()" title="텍스트 파일 저장">📄 TXT</button>
+        <button class="hbtn" onclick="exportPDF()" title="PDF 저장">🖨️ PDF</button>
+        <button class="hbtn hbtn-danger" onclick="clearHistory()" title="히스토리 삭제">🗑️</button>
+      </div>
+    </div>
+
+    <div class="kb-warning" id="kbWarning">
+      ⚠️ 지식베이스가 비어있습니다. /knowledge/base.json에 문서를 추가해주세요.
+    </div>
+    <div class="err-box" id="errBox" style="display:none"></div>
+
+    <div class="feedback-body" id="feedbackBody">
+      <div class="fb-empty" id="fbEmpty">
+        <div class="icon">✍️</div>
+        <h3>피드백 대기 중</h3>
+        <p>왼쪽에 수강생 미션 내용을 입력하면 Personalmakers AI 관점으로 피드백을 생성합니다</p>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+
+<script>
+// ─── Password Gate (최우선 실행) ─────────────────────────────────────────────
+(function() {
+  const PW = '0630';
+  const KEY = 'pm_auth_v1';
+  if (sessionStorage.getItem(KEY) === 'ok') {
+    document.addEventListener('DOMContentLoaded', function() {
+      var gate = document.getElementById('pwGate');
+      if (gate) gate.style.display = 'none';
+    });
+  }
+  window.checkPW = function() {
+    var val = document.getElementById('pwInput').value;
+    if (val === PW) {
+      sessionStorage.setItem(KEY, 'ok');
+      var gate = document.getElementById('pwGate');
+      gate.style.opacity = '0';
+      gate.style.transition = 'opacity .3s';
+      setTimeout(function() { gate.style.display = 'none'; }, 300);
+    } else {
+      var inp = document.getElementById('pwInput');
+      var err = document.getElementById('pwErr');
+      inp.classList.add('shake', 'error');
+      err.textContent = '비밀번호가 맞지 않아요';
+      setTimeout(function() { inp.classList.remove('shake', 'error'); err.textContent = ''; inp.value = ''; }, 1200);
+    }
+  };
+})();
+
+// ─── State ───────────────────────────────────────────────────────────────────
+let mode = 'conv';
+let isLoading = false;
+
+// ─── Load Knowledge Base ──────────────────────────────────────────────────────
+async function loadKnowledgeBase() {
+  // RAG는 서버사이드에서 처리 — 클라이언트 상태 체크 불필요
+  document.getElementById('kbStatusTxt').textContent = '지식베이스 준비 완료 · RAG 서버 연동';
+}
+
+
+// ─── Main Feedback Handler ────────────────────────────────────────────────────
+async function handleFeedback() {
+  const mission = document.getElementById('missionContent').value.trim();
+  if (!mission || isLoading) return;
+
+  isLoading = true;
+  document.getElementById('feedbackBtn').disabled = true;
+  setError('');
+  showLoading();
+
+  try {
+    const studentName = document.getElementById('studentName').value.trim();
+    const missionType = document.getElementById('missionType').value;
+    const extraContext = document.getElementById('extraContext').value.trim();
+
+    const fbRes = await fetch('/api/feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question: mission, category: missionType, studentName, extraContext, mode, stream: true }),
+    });
+
+    const ctype = fbRes.headers.get('content-type') || '';
+    if (!fbRes.ok || ctype.indexOf('text/event-stream') === -1) {
+      const fbData = await fbRes.json();
+      if (fbData.error) throw new Error(fbData.error);
+      showFeedback({
+        student: studentName || '수강생',
+        missionType,
+        mission: mission,
+        answer: fbData.feedback,
+        mode,
+        sources: fbData.sources || [],
+        time: new Date().toLocaleString('ko-KR'),
+      });
+      return;
+    }
+
+    // 스트리밍: 카드를 먼저 띄우고 텍스트를 실시간으로 채움
+    hideLoading();
+    const record = {
+      student: studentName || '수강생',
+      missionType,
+      mission: mission,
+      answer: '',
+      mode,
+      sources: [],
+      time: new Date().toLocaleString('ko-KR'),
+    };
+    const card = renderFeedbackCard(record);
+    const contentEl = card.querySelector('.fb-content');
+    document.getElementById('fbSub').textContent = '피드백 생성 중...';
+
+    const reader = fbRes.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    let answer = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const events = buf.split('\n\n');
+      buf = events.pop();
+      for (const evt of events) {
+        let evName = '';
+        let evData = '';
+        for (const ln of evt.split('\n')) {
+          if (ln.indexOf('event:') === 0) evName = ln.slice(6).trim();
+          else if (ln.indexOf('data:') === 0) evData += ln.slice(5).trim();
+        }
+        if (!evData) continue;
+        let obj;
+        try { obj = JSON.parse(evData); } catch(err) { continue; }
+        if (evName === 'meta' && obj.sources) record.sources = obj.sources;
+        else if (evName === 'delta' && obj.t) { answer += obj.t; contentEl.textContent = answer; }
+        else if (evName === 'err' && obj.error) throw new Error(obj.error);
+      }
+    }
+    if (!answer) throw new Error('응답이 비어 있습니다. 다시 시도해주세요.');
+    record.answer = answer;
+    finalizeFeedbackCard(card, record);
+    addToHistory(record);
+    document.getElementById('fbSub').textContent = record.student + ' · 피드백 완료';
+  } catch(e) {
+    setError(e.message);
+    hideLoading();
+  } finally {
+    isLoading = false;
+    document.getElementById('feedbackBtn').disabled = false;
+    checkBtn();
+  }
+}
+
+// ─── UI Helpers ───────────────────────────────────────────────────────────────
+function showLoading() {
+  document.getElementById('fbEmpty').style.display = 'none';
+  const body = document.getElementById('feedbackBody');
+  removeEl('fbLoading');
+  const div = document.createElement('div');
+  div.id = 'fbLoading'; div.className = 'fb-loading';
+  div.innerHTML = `
+    <div class="spinner"></div>
+    <div class="loading-label">피드백 생성 중...</div>
+    <div class="loading-steps">1. 미션 내용 분석<br>2. 관련 지식 검색<br>3. Personalmakers AI 관점 피드백 작성</div>
+  `;
+  body.insertBefore(div, body.firstChild);
+  document.getElementById('fbSub').textContent = '분석 중...';
+}
+
+function hideLoading() { removeEl('fbLoading'); }
+
+// ─── History Storage ─────────────────────────────────────────────────────────
+const HIST_KEY = 'pm_history_v1';
+function loadHistory() {
+  try { return JSON.parse(localStorage.getItem(HIST_KEY) || '[]'); } catch { return []; }
+}
+function saveHistory(records) {
+  try { localStorage.setItem(HIST_KEY, JSON.stringify(records)); } catch {}
+}
+function addToHistory(record) {
+  const records = loadHistory();
+  records.unshift(record);
+  if (records.length > 100) records.pop(); // 최대 100개
+  saveHistory(records);
+  updateHistoryBtns();
+}
+function updateHistoryBtns() {
+  const records = loadHistory();
+  document.getElementById('historyBtns').style.display = records.length > 0 ? 'flex' : 'none';
+}
+function clearHistory() {
+  if (!confirm('저장된 모든 피드백 히스토리를 삭제할까요?')) return;
+  localStorage.removeItem(HIST_KEY);
+  document.getElementById('feedbackBody').innerHTML = `<div class="fb-empty" id="fbEmpty"><div class="icon">✍️</div><h3>피드백 대기 중</h3><p>왼쪽에 수강생 미션 내용을 입력하면 Personalmakers AI 관점으로 피드백을 생성합니다</p></div>`;
+  document.getElementById('fbSub').textContent = '미션 내용을 입력하고 생성을 눌러주세요';
+  updateHistoryBtns();
+}
+function exportTxt() {
+  const records = loadHistory();
+  if (!records.length) return;
+  const ML = {channel:'채널 기획',content:'콘텐츠 기획',script:'영상 대본',thumbnail:'썸네일/제목',branding:'채널 브랜딩',review:'채널 리뷰',free:'자유 질문'};
+  const lines = records.map((r, i) => {
+    const label = ML[r.missionType] || r.missionType;
+    return '='.repeat(60) + '\n' +
+      '[' + (i+1) + '] ' + (r.student||'수강생') + ' · ' + label + ' · ' + r.time + '\n' +
+      '='.repeat(60) + '\n\n' +
+      '【질문 / 제출 내용】\n' +
+      (r.mission || '(내용 없음)') + '\n\n' +
+      '【Personalmakers AI 피드백】\n' +
+      r.answer + '\n';
+  });
+  const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  const date = new Date().toLocaleDateString('ko-KR').replace(/\. /g,'-').replace('.','');
+  a.download = '피드백_히스토리_' + date + '.txt';
+  a.click();
+}
+
+function copyAllHistory() {
+  const records = loadHistory();
+  if (!records.length) return;
+  const ML = {channel:'채널 기획',content:'콘텐츠 기획',free:'자유 질문'};
+  const text = records.map((r, i) => {
+    const label = ML[r.missionType] || r.missionType;
+    return '[' + (i+1) + '] ' + (r.student||'수강생') + ' · ' + label + ' · ' + r.time + '\n\n' +
+      '【질문 / 제출 내용】\n' + (r.mission||'(내용 없음)') + '\n\n' +
+      '【Personalmakers AI 피드백】\n' + r.answer + '\n' + '─'.repeat(40);
+  }).join('\n\n');
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.querySelector('[onclick="copyAllHistory()"]');
+    if (btn) { btn.textContent = '✅ 복사됨'; setTimeout(() => btn.textContent = '📋 복사', 1500); }
+  });
+}
+
+function exportPDF() {
+  const records = loadHistory();
+  if (!records.length) return;
+  const ML = {channel:'채널 기획',content:'콘텐츠 기획',free:'자유 질문'};
+  const win = window.open('', '_blank');
+  const cards = records.map((r, i) => {
+    const label = ML[r.missionType] || r.missionType;
+    const mission = r.mission ? '<div class="mission"><div class="mission-label">📝 제출 내용</div>' + r.mission.replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</div>' : '';
+    const answer = r.answer.replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return '<div class="card"><div class="card-header"><div><span class="num">' + (i+1) + '</span><strong>' + (r.student||'수강생') + '</strong> · ' + label + '</div><div>' + r.time + '</div></div>' + mission + '<div class="feedback">' + answer + '</div></div>';
+  }).join('');
+  win.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>피드백 히스토리</title><style>body{font-family:"Apple SD Gothic Neo","Malgun Gothic",sans-serif;max-width:800px;margin:0 auto;padding:40px 32px;color:#1a1714;font-size:13px;line-height:1.8}h1{font-size:20px;color:#2563eb;border-bottom:2px solid #2563eb;padding-bottom:10px;margin-bottom:28px}.card{margin-bottom:36px;page-break-inside:avoid;border:1px solid #e8e3d8;border-radius:8px;overflow:hidden}.card-header{background:#f8fafc;padding:10px 16px;font-size:11px;color:#8a8178;display:flex;justify-content:space-between;border-bottom:1px solid #e8e3d8}.card-header strong{color:#1a1714;font-size:13px}.mission{background:#eff6ff;border-left:3px solid #2563eb;padding:10px 14px;margin:14px 16px 0;border-radius:4px;font-size:12px;color:#1e40af;white-space:pre-wrap}.mission-label{font-size:10px;font-weight:700;color:#2563eb;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:5px}.feedback{padding:14px 16px;white-space:pre-wrap;font-size:13px}.num{display:inline-block;background:#2563eb;color:white;border-radius:50%;width:20px;height:20px;text-align:center;line-height:20px;font-size:11px;font-weight:700;margin-right:6px}@media print{body{padding:20px}}</style></head><body><h1>✍️ Personalmakers AI 피드백 히스토리</h1><p style="color:#8a8178;font-size:11px;margin-bottom:28px">내보낸 날짜: ' + new Date().toLocaleString('ko-KR') + ' · 총 ' + records.length + '건</p>' + cards + '<script>window.onload=function(){window.print()}<\/script></body></html>');
+  win.document.close();
+}
+
+function renderFeedbackCard(record) {
+  const body = document.getElementById('feedbackBody');
+  const emptyEl = document.getElementById('fbEmpty');
+  if (emptyEl) emptyEl.style.display = 'none';
+
+  const isStruct = record.mode === 'struct';
+  const missionLabel = {
+    channel:'채널 기획', content:'콘텐츠 기획', free:'자유 질문'
+  }[record.missionType] || record.missionType;
+
+  const card = document.createElement('div');
+  card.className = 'fb-card';
+  card.innerHTML = `
+    <div class="fb-meta">
+      <div style="display:flex;gap:8px;align-items:center">
+        <span class="fb-badge ${isStruct?'struct':''}">${isStruct?'📋 구조화':'💬 구어체'}</span>
+        <span>${escHtml(record.student)} · ${missionLabel}</span>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <span>${record.time}</span>
+        <button class="copy-btn" onclick="registerPlaybook(this)" title="이 Q&A를 플레이북 DB에 등록 (커밍쏜 검수 후 AI에 반영)">🧠 AI 학습시키기</button>
+        <button class="copy-btn" onclick="copyFeedback(this)">복사</button>
+      </div>
+    </div>
+    ${record.mission ? `
+    <div class="fb-mission">
+      <div class="fb-mission-label">📝 제출 내용</div>
+      <div class="fb-mission-text">${escHtml(record.mission)}</div>
+    </div>` : ''}
+    <div class="fb-content">${escHtml(record.answer)}</div>
+    <div class="fb-sources" style="display:none">
+      <div class="fb-src-label"></div>
+      <div class="src-pills"></div>
+    </div>
+    <div class="fb-qa"></div>
+    <div class="fb-followup">
+      <div class="fb-followup-label">💬 추가 질문</div>
+      <div class="fb-followup-row">
+        <input class="fb-followup-input" type="text" placeholder="피드백에 대해 더 궁금한 점을 물어보세요..."
+          onkeydown="if(event.key==='Enter')askFollowup(this)" />
+        <button class="fb-followup-btn" onclick="askFollowup(this.previousElementSibling)">전송</button>
+      </div>
+    </div>
+  `;
+  body.insertBefore(card, body.firstChild);
+  return card;
+}
+
+function finalizeFeedbackCard(card, record) {
+  if (record.sources && record.sources.length > 0) {
+    const box = card.querySelector('.fb-sources');
+    box.style.display = '';
+    box.querySelector('.fb-src-label').textContent = '📎 참고한 지식 (' + record.sources.length + '개)';
+    box.querySelector('.src-pills').innerHTML = record.sources.map(s => `<span class="src-pill">${escHtml(s.docName)}</span>`).join('');
+  }
+}
+
+function showFeedback(record) {
+  hideLoading();
+  addToHistory(record);
+  const card = renderFeedbackCard(record);
+  finalizeFeedbackCard(card, record);
+  const missionLabel = {
+    channel:'채널 기획', content:'콘텐츠 기획', free:'자유 질문'
+  }[record.missionType] || record.missionType;
+  document.getElementById('fbSub').textContent = `${record.student} · ${missionLabel} 피드백 완료`;
+}
+
+async function registerPlaybook(btn) {
+  const card = btn.closest('.fb-card');
+  const mEl = card.querySelector('.fb-mission-text');
+  const question = mEl ? mEl.textContent.trim() : '';
+  const answer = card.querySelector('.fb-content').textContent.trim();
+  if (!question || !answer) { alert('등록할 질문/답변 내용이 없습니다.'); return; }
+  if (btn.dataset.done === '1') return;
+  btn.disabled = true;
+  const orig = btn.textContent;
+  btn.textContent = '등록 중...';
+  try {
+    const r = await fetch('/api/playbook', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question, answer }),
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    btn.dataset.done = '1';
+    btn.textContent = '✅ 등록됨';
+    btn.title = '플레이북 DB에 등록 완료 — 커밍쏜 검수(승인) 후 AI에 반영됩니다';
+  } catch(e) {
+    btn.disabled = false;
+    btn.textContent = orig;
+    alert('플레이북 등록 실패: ' + e.message);
+  }
+}
+
+async function askFollowup(input) {
+  var question = input.value.trim();
+  if (!question || isLoading) return;
+  var card = input.closest('.fb-card');
+  var qaDiv = card.querySelector('.fb-qa');
+  var btn = input.nextElementSibling;
+
+  var origMission = card.querySelector('.fb-mission-text') ? card.querySelector('.fb-mission-text').textContent : '';
+  var origFeedback = card.querySelector('.fb-content').textContent;
+  var prevQAs = Array.from(card.querySelectorAll('.fb-q')).map(function(q) {
+    var qText = q.lastChild ? q.lastChild.textContent : q.textContent;
+    var aEl = q.nextElementSibling;
+    return 'Q: ' + qText.trim() + '\nA: ' + (aEl ? aEl.textContent.trim() : '');
+  }).join('\n\n');
+
+  input.value = '';
+  btn.disabled = true;
+  btn.textContent = '...';
+
+  var qDiv = document.createElement('div');
+  qDiv.className = 'fb-q';
+  qDiv.innerHTML = '<div class="fb-q-label">추가 질문</div>' + escHtml(question);
+  qaDiv.appendChild(qDiv);
+
+  var aDiv = document.createElement('div');
+  aDiv.className = 'fb-a';
+  aDiv.textContent = '답변 생성 중...';
+  qaDiv.appendChild(aDiv);
+
+  try {
+    var contextQ = '원본 제출 내용:\n' + origMission +
+      '\n\n원본 피드백:\n' + origFeedback +
+      (prevQAs ? '\n\n이전 추가 Q&A:\n' + prevQAs : '') +
+      '\n\n추가 질문: ' + question;
+
+    var missionType = document.getElementById('missionType').value;
+    var studentName = document.getElementById('studentName').value.trim();
+    var fbRes = await fetch('/api/feedback', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question: contextQ, category: missionType, studentName: studentName, mode: 'conv' }),
+    });
+    var fbData = await fbRes.json();
+    if (fbData.error) throw new Error(fbData.error);
+    aDiv.textContent = fbData.feedback;
+  } catch(e) {
+    aDiv.textContent = '오류: ' + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '전송';
+  }
+}
+
+function copyFeedback(btn) {
+  const content = btn.closest('.fb-card').querySelector('.fb-content').textContent;
+  navigator.clipboard.writeText(content).then(() => {
+    btn.textContent = '✅ 복사됨';
+    setTimeout(() => btn.textContent = '복사', 1500);
+  });
+}
+
+function setError(msg) {
+  const box = document.getElementById('errBox');
+  if (msg) { box.textContent = '⚠️ ' + msg; box.style.display = 'block'; }
+  else { box.style.display = 'none'; }
+}
+
+function setMode(m) {
+  mode = m;
+  document.getElementById('modeConv').classList.toggle('active', m==='conv');
+  document.getElementById('modeStruct').classList.toggle('active', m==='struct');
+}
+
+function onMissionInput() {
+  const len = document.getElementById('missionContent').value.length;
+  document.getElementById('charCount').textContent = len.toLocaleString() + '자';
+  checkBtn();
+}
+
+function checkBtn() {
+  const mission = document.getElementById('missionContent').value.trim();
+  document.getElementById('feedbackBtn').disabled = !mission || isLoading;
+}
+
+function clearForm() {
+  document.getElementById('studentName').value = '';
+  document.getElementById('missionContent').value = '';
+  document.getElementById('extraContext').value = '';
+  document.getElementById('charCount').textContent = '0자';
+    removeImage();
+  checkBtn();
+}
+
+function removeEl(id) { const el = document.getElementById(id); if (el) el.remove(); }
+function escHtml(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  // ─── 이미지 OCR 기능 ──────────────────────────────────────────────────────
+
+  let currentImageData = null;
+  let isExtracting = false;
+
+  function handleDragOver(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    document.getElementById('imgDropZone').classList.add('dragover');
+  }
+
+  function handleDragLeave(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    document.getElementById('imgDropZone').classList.remove('dragover');
+  }
+
+  function handleDrop(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    document.getElementById('imgDropZone').classList.remove('dragover');
+    const files = e.dataTransfer.files;
+    if (files.length > 0) processImageFile(files[0]);
+  }
+
+  function handleFileSelect(e) {
+    const files = e.target.files;
+    if (files.length > 0) processImageFile(files[0]);
+  }
+
+  function processImageFile(file) {
+    const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (!validTypes.includes(file.type)) {
+      setImgStatus('⚠️ 지원하지 않는 파일 형식입니다. JPG, PNG, WebP, GIF만 가능해요.', 'error');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setImgStatus('⚠️ 파일 크기가 10MB를 초과합니다.', 'error');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const dataUrl = e.target.result;
+      const parts = dataUrl.split(',');
+      if (parts.length !== 2 || !parts[1]) {
+        setImgStatus('⚠️ 이미지 읽기에 실패했습니다. 다시 시도해주세요.', 'error');
+        return;
+      }
+
+      document.getElementById('imgPreview').src = dataUrl;
+      document.getElementById('imgPreviewWrap').style.display = 'block';
+
+      currentImageData = { base64: parts[1], mediaType: file.type, file };
+      extractTextFromImage();
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function extractTextFromImage() {
+    if (!currentImageData || isExtracting) return;
+    isExtracting = true;
+
+    setImgStatus('🔍 텍스트 추출 중... (Claude Vision AI 분석)', 'extracting');
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 55000);
+
+    try {
+      const response = await fetch('/api/ocr', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          image: currentImageData.base64,
+          mediaType: currentImageData.mediaType,
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        throw new Error('서버 오류가 발생했습니다 (' + response.status + '). 다시 시도해주세요.');
+      }
+
+      const data = await response.json();
+      if (data.error) throw new Error(data.error);
+
+      const extractedText = data.text;
+      if (!extractedText || extractedText.trim().length === 0) {
+        setImgStatus('⚠️ 이미지에서 텍스트를 찾지 못했습니다.', 'error');
+        return;
+      }
+
+      const textarea = document.getElementById('missionContent');
+      const currentVal = textarea.value.trim();
+
+      if (currentVal) {
+        textarea.value = currentVal + '\n\n───── 📸 이미지에서 추출된 내용 ─────\n' + extractedText;
+      } else {
+        textarea.value = extractedText;
+      }
+
+      onMissionInput();
+      setImgStatus('✅ 텍스트 추출 완료! 아래 내용을 확인하고 필요하면 수정하세요.', 'done');
+
+    } catch (e) {
+      clearTimeout(timeout);
+      console.error('OCR error:', e);
+      if (e.name === 'AbortError') {
+        setImgStatus('⚠️ 요청 시간이 초과되었습니다. 다시 시도해주세요.', 'error');
+      } else {
+        setImgStatus('⚠️ 텍스트 추출 실패: ' + e.message, 'error');
+      }
+    } finally {
+      isExtracting = false;
+    }
+  }
+
+  function removeImage() {
+    currentImageData = null;
+    document.getElementById('imgPreview').src = '';
+    document.getElementById('imgPreviewWrap').style.display = 'none';
+    document.getElementById('imgFileInput').value = '';
+    setImgStatus('');
+  }
+
+  function setImgStatus(msg, cls) {
+    const el = document.getElementById('imgStatus');
+    el.textContent = msg;
+    el.className = 'img-status' + (cls ? ' ' + cls : '');
+  }
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+loadKnowledgeBase();
+// 저장된 히스토리 있으면 버튼 표시
+setTimeout(updateHistoryBtns, 100);
+
+
+</script>
+<script>
+(function(){
+  var _f = window.fetch;
+  function logH(p){ try { _f('/api/history', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(p)}); } catch(e){} }
+  window.fetch = function(url, opt){
+    var p = _f.apply(this, arguments);
+    try {
+      if (typeof url === 'string' && url.indexOf('/api/feedback') === 0 && opt && opt.method === 'POST') {
+        var b = JSON.parse(opt.body || '{}');
+        p = p.then(function(res){
+          try {
+            var isFu = typeof b.contextQ !== 'undefined';
+            var base = { student: b.studentName || '', missionType: b.missionType || '', mode: b.mode || '', type: isFu ? 'followup' : 'feedback', question: b.question || '' };
+            var ct = (res.headers.get('content-type') || '');
+            if (ct.indexOf('text/event-stream') >= 0) {
+              var reader = res.clone().body.getReader(); var dec = new TextDecoder(); var buf = ''; var txt = '';
+              (function pump(){ reader.read().then(function(x){
+                if (x.done) { if (txt) logH(Object.assign({answer: txt}, base)); return; }
+                buf += dec.decode(x.value, {stream:true});
+                var evs = buf.split('\n\n'); buf = evs.pop();
+                for (var i=0;i<evs.length;i++){
+                  var ev='', data='';
+                  var lines = evs[i].split('\n');
+                  for (var j=0;j<lines.length;j++){ var l=lines[j]; if (l.indexOf('event:')===0) ev=l.slice(6).trim(); else if (l.indexOf('data:')===0) data+=l.slice(5).trim(); }
+                  if (ev==='delta' && data) { try { var o=JSON.parse(data); if (o.t) txt+=o.t; } catch(err){} }
+                }
+                pump();
+              }).catch(function(){ if (txt) logH(Object.assign({answer: txt}, base)); }); })();
+            } else if (ct.indexOf('application/json') >= 0) {
+              res.clone().json().then(function(d){ if (d && d.feedback) logH(Object.assign({answer: d.feedback}, base)); }).catch(function(){});
+            }
+          } catch(e){}
+          return res;
+        });
+      }
+    } catch(e){}
+    return p;
+  };
+})();
+</script>
+</body>
+</html>

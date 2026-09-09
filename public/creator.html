@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>커밍쏜 콘텐츠 기획 스튜디오</title>
+<link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700&family=Noto+Serif+KR:wght@400;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #0d0f14; --surface: #161920; --surface2: #1e2128;
+  --border: #2a2d36; --border-light: #353840;
+  --ink: #f0f2f7; --ink-mid: #9ca3b0; --ink-light: #6b7280;
+  --accent: #6366f1; --accent-soft: rgba(99,102,241,.12); --accent-glow: rgba(99,102,241,.3);
+  --gold: #f59e0b; --gold-soft: rgba(245,158,11,.12);
+  --green: #10b981; --green-soft: rgba(16,185,129,.1);
+  --r: 10px;
+  --font: "Pretendard", "Apple SD Gothic Neo", sans-serif;
+  --serif: "Noto Serif KR", Georgia, serif;
+  --mono: "JetBrains Mono", monospace;
+}
+body { background: var(--bg); color: var(--ink); font-family: var(--font); min-height: 100vh; display: flex; flex-direction: column;
+  background-image: radial-gradient(ellipse at 10% 0%, rgba(99,102,241,.15) 0%, transparent 50%), radial-gradient(ellipse at 90% 100%, rgba(245,158,11,.08) 0%, transparent 50%); }
+.top-bar { background: rgba(22,25,32,.95); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); padding: 0 28px; display: flex; align-items: center; justify-content: space-between; height: 56px; flex-shrink: 0; position: sticky; top: 0; z-index: 100; }
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand-badge { background: var(--accent); color: white; font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 4px; letter-spacing: 0.5px; }
+.brand-name { font-family: var(--serif); font-size: 16px; letter-spacing: -0.3px; }
+.brand-sub { font-size: 11px; color: var(--ink-light); font-family: var(--mono); border-left: 1px solid var(--border); padding-left: 10px; margin-left: 2px; }
+.top-pills { display: flex; gap: 8px; }
+.stat-pill { background: var(--surface2); border: 1px solid var(--border); border-radius: 20px; padding: 4px 12px; font-size: 11px; font-family: var(--mono); color: var(--ink-mid); display: flex; align-items: center; gap: 5px; }
+.stat-pill span { color: var(--gold); font-weight: 600; }
+.main { display: grid; grid-template-columns: 380px 1fr; flex: 1; overflow: hidden; height: calc(100vh - 56px - 64px); }
+.input-panel { display: flex; flex-direction: column; border-right: 1px solid var(--border); overflow: hidden; }
+.panel-header { padding: 18px 22px 14px; border-bottom: 1px solid var(--border); background: var(--surface); flex-shrink: 0; }
+.panel-title { font-size: 14px; font-weight: 700; }
+.panel-sub { font-size: 11px; color: var(--ink-light); margin-top: 3px; }
+.panel-body { flex: 1; overflow-y: auto; padding: 18px 22px; display: flex; flex-direction: column; gap: 16px; }
+.panel-body::-webkit-scrollbar { width: 3px; }
+.panel-body::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 2px; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.lbl { font-size: 10px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; color: var(--ink-light); }
+.txa { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--r); padding: 10px 12px; color: var(--ink); font-family: var(--font); font-size: 13px; outline: none; width: 100%; resize: vertical; line-height: 1.7; transition: border-color .15s, box-shadow .15s; }
+.txa:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.txa::placeholder { color: var(--ink-light); }
+.input-mode-tabs { display: flex; gap: 4px; margin-bottom: 8px; }
+.tab-btn { flex: 1; padding: 7px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface2); color: var(--ink-light); font-family: var(--font); font-size: 11px; font-weight: 600; cursor: pointer; transition: all .15s; text-align: center; }
+.tab-btn.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.type-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.type-btn { padding: 10px 8px; border-radius: var(--r); border: 1px solid var(--border); background: var(--surface2); color: var(--ink-mid); font-family: var(--font); font-size: 12px; font-weight: 600; cursor: pointer; transition: all .15s; text-align: center; }
+.type-btn small { display: block; font-size: 10px; opacity: .6; margin-top: 2px; font-weight: 400; }
+.type-btn.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.output-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+.output-btn { padding: 8px 4px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface2); color: var(--ink-mid); font-family: var(--font); font-size: 11px; font-weight: 500; cursor: pointer; transition: all .15s; text-align: center; }
+.output-btn.active { border-color: var(--gold); background: var(--gold-soft); color: var(--gold); font-weight: 700; }
+.style-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.style-btn { padding: 9px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface2); color: var(--ink-mid); font-family: var(--font); font-size: 11px; font-weight: 500; cursor: pointer; transition: all .15s; text-align: center; }
+.style-btn small { display: block; font-size: 10px; opacity: .6; margin-top: 2px; }
+.style-btn.active { border-color: var(--green); background: var(--green-soft); color: var(--green); font-weight: 700; }
+.insight-card { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--r); padding: 12px 14px; }
+.insight-title { font-size: 10px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; color: var(--ink-light); margin-bottom: 8px; }
+.insight-row { display: flex; justify-content: space-between; margin-bottom: 4px; }
+.insight-label { font-size: 11px; color: var(--ink-mid); }
+.insight-val { font-size: 11px; font-family: var(--mono); color: var(--gold); font-weight: 600; }
+.output-panel { display: flex; flex-direction: column; overflow: hidden; }
+.output-header { padding: 14px 24px; border-bottom: 1px solid var(--border); background: var(--surface); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+.output-title { font-size: 13px; font-weight: 600; color: var(--ink-mid); }
+.output-actions { display: flex; gap: 6px; }
+.act-btn { padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--ink-mid); font-size: 11px; cursor: pointer; transition: all .15s; font-family: var(--font); }
+.act-btn:hover { background: var(--surface2); color: var(--ink); }
+.output-body { flex: 1; overflow-y: auto; padding: 22px 24px; }
+.output-body::-webkit-scrollbar { width: 3px; }
+.output-body::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 2px; }
+.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 14px; color: var(--ink-light); }
+.empty-icon { font-size: 44px; opacity: .3; }
+.empty-title { font-size: 15px; font-weight: 600; color: var(--ink-mid); }
+.empty-sub { font-size: 12px; text-align: center; line-height: 1.7; max-width: 300px; }
+.result-section { margin-bottom: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.result-section-header { padding: 11px 16px; background: var(--surface2); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
+.result-section-icon { font-size: 14px; }
+.result-section-title { font-size: 11px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; color: var(--ink-mid); }
+.result-section-body { padding: 16px; font-size: 13px; line-height: 1.85; color: var(--ink-mid); white-space: pre-wrap; }
+.result-section-body strong { color: var(--ink); font-weight: 600; }
+.title-item { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; margin-bottom: 8px; cursor: pointer; transition: all .15s; }
+.title-item:hover { border-color: var(--accent); }
+.title-item:last-child { margin-bottom: 0; }
+.title-num { font-size: 10px; font-family: var(--mono); color: var(--gold); font-weight: 700; margin-bottom: 5px; }
+.title-text { font-size: 14px; font-weight: 600; color: var(--ink); line-height: 1.5; margin-bottom: 5px; }
+.title-reason { font-size: 11px; color: var(--ink-light); line-height: 1.5; }
+.loading-wrap { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 16px; }
+.loading-dots { display: flex; gap: 6px; }
+.loading-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: dotPulse 1.4s ease-in-out infinite; }
+.loading-dot:nth-child(2) { animation-delay: .2s; }
+.loading-dot:nth-child(3) { animation-delay: .4s; }
+@keyframes dotPulse { 0%,80%,100%{opacity:.2;transform:scale(.8)} 40%{opacity:1;transform:scale(1)} }
+.loading-text { font-size: 13px; color: var(--ink-mid); font-family: var(--mono); }
+.app-footer { height: 64px; border-top: 1px solid var(--border); background: var(--surface); display: flex; align-items: center; padding: 0 22px; gap: 10px; flex-shrink: 0; position: fixed; bottom: 0; left: 0; right: 0; z-index: 50; }
+.btn { padding: 11px 18px; border: none; border-radius: var(--r); font-family: var(--font); font-size: 13px; font-weight: 600; cursor: pointer; transition: all .15s; }
+.btn-primary { background: var(--accent); color: white; flex: 1; }
+.btn-primary:hover:not(:disabled) { background: #4f46e5; box-shadow: 0 4px 20px var(--accent-glow); transform: translateY(-1px); }
+.btn-primary:disabled { opacity: .35; cursor: not-allowed; transform: none; box-shadow: none; }
+.btn-ghost { background: transparent; border: 1px solid var(--border); color: var(--ink-mid); white-space: nowrap; }
+.btn-ghost:hover { background: var(--surface2); color: var(--ink); }
+.pw-overlay { position: fixed; inset: 0; background: var(--bg); display: flex; align-items: center; justify-content: center; z-index: 9999; }
+.pw-box { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 40px; width: 340px; text-align: center; }
+.pw-logo { font-size: 36px; margin-bottom: 12px; }
+.pw-title { font-family: var(--serif); font-size: 20px; margin-bottom: 4px; }
+.pw-sub { font-size: 12px; color: var(--ink-light); margin-bottom: 24px; }
+.pw-input { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--r); padding: 12px 16px; color: var(--ink); font-size: 20px; text-align: center; letter-spacing: 8px; outline: none; font-family: var(--mono); transition: border-color .15s; }
+.pw-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.pw-btn { width: 100%; margin-top: 12px; padding: 12px; background: var(--accent); border: none; border-radius: var(--r); color: white; font-size: 14px; font-weight: 700; cursor: pointer; font-family: var(--font); transition: all .15s; }
+.pw-btn:hover { background: #4f46e5; }
+.pw-err { color: #f87171; font-size: 12px; margin-top: 8px; min-height: 16px; }
+</style>
+</head>
+<body>
+
+<div class="pw-overlay" id="pwOverlay">
+  <div class="pw-box">
+    <div class="pw-logo">🎬</div>
+    <div class="pw-title">Creator Studio</div>
+    <div class="pw-sub">커밍쏜 콘텐츠 기획 전용 도구</div>
+    <input class="pw-input" id="pwInput" type="password" maxlength="10" placeholder="••••" onkeydown="if(event.key==='Enter')checkPW()" autofocus />
+    <div class="pw-err" id="pwErr"></div>
+    <button class="pw-btn" onclick="checkPW()">입장하기</button>
+  </div>
+</div>
+
+<div class="top-bar">
+  <div class="brand">
+    <div class="brand-badge">CREATOR</div>
+    <div class="brand-name">콘텐츠 기획 스튜디오</div>
+    <div class="brand-sub">커밍쏜 전용</div>
+  </div>
+  <div class="top-pills">
+    <div class="stat-pill">최고: <span>163만뷰</span></div>
+    <div class="stat-pill">최적 길이: <span>8~15분</span></div>
+    <div class="stat-pill">CTR: <span>5.1%</span></div>
+  </div>
+</div>
+
+<div class="main">
+  <div class="input-panel">
+    <div class="panel-header">
+      <div class="panel-title">소재 & 기획 설정</div>
+      <div class="panel-sub">소재를 입력하면 내 채널 데이터 기반으로 기획해드려요</div>
+    </div>
+    <div class="panel-body">
+
+      <div class="field">
+        <label class="lbl">소재 입력 방식</label>
+        <div class="input-mode-tabs">
+          <button class="tab-btn active" id="modeKeyword" onclick="setInputMode('keyword')">🔑 키워드만</button>
+          <button class="tab-btn" id="modeStory" onclick="setInputMode('story')">📖 상황/스토리</button>
+        </div>
+        <div id="keywordInput">
+          <textarea class="txa" id="topicKeyword" rows="3" oninput="checkBtn()" placeholder="예: 유튜브 1년 실패, 퇴사 후 현실, 30대 직장인 운동"></textarea>
+        </div>
+        <div id="storyInput" style="display:none">
+          <textarea class="txa" id="topicStory" rows="6" oninput="checkBtn()" placeholder="예: 유튜브 1년 하면서 돈을 못 번 이유들을 솔직하게 이야기하고 싶어. 수익화에 집착하다 콘텐츠 퀄리티를 놓쳤던 경험도 담고 싶고."></textarea>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="lbl">콘텐츠 유형</label>
+        <div class="type-grid">
+          <button class="type-btn active" id="typeMid" onclick="setType('mid')">📹 미드폼<small>8~15분</small></button>
+          <button class="type-btn" id="typeShorts" onclick="setType('shorts')">⚡ 쇼츠<small>60초 이하</small></button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="lbl">원하는 출력</label>
+        <div class="output-grid">
+          <button class="output-btn active" id="out-title" onclick="toggleOutput('title')">🎯 제목</button>
+          <button class="output-btn active" id="out-script" onclick="toggleOutput('script')">📝 대본구조</button>
+          <button class="output-btn active" id="out-thumb" onclick="toggleOutput('thumb')">🖼 썸네일</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="lbl">결과물 스타일</label>
+        <div class="style-grid">
+          <button class="style-btn active" id="styleDraft" onclick="toggleStyle('draft')">✍️ 바로 쓸 수 있는 초안<small>구체적인 문장으로</small></button>
+          <button class="style-btn active" id="styleDir" onclick="toggleStyle('direction')">🧭 방향 제시<small>핵심 포인트 위주</small></button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="lbl">추가 방향 (선택)</label>
+        <textarea class="txa" id="direction" rows="2" placeholder="강조하고 싶은 메시지, 타겟, 분위기 등"></textarea>
+      </div>
+
+      <div class="insight-card">
+        <div class="insight-title">📊 내 채널 인사이트</div>
+        <div class="insight-row"><span class="insight-label">최적 미드폼 길이</span><span class="insight-val">8~15분</span></div>
+        <div class="insight-row"><span class="insight-label">미드폼 최고</span><span class="insight-val">163만뷰</span></div>
+        <div class="insight-row"><span class="insight-label">쇼츠 최고</span><span class="insight-val">320만뷰</span></div>
+        <div class="insight-row"><span class="insight-label">터지는 패턴</span><span class="insight-val">숫자+반전+타겟</span></div>
+        <div class="insight-row"><span class="insight-label">평균 CTR</span><span class="insight-val">미드폼 5.1%</span></div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="output-panel">
+    <div class="output-header">
+      <div class="output-title" id="outputTitle">🎬 기획 결과가 여기 나타납니다</div>
+      <div class="output-actions">
+        <button class="act-btn" onclick="copyResult()">📋 전체 복사</button>
+        <button class="act-btn" onclick="clearResult()">🗑 초기화</button>
+      </div>
+    </div>
+    <div class="output-body" id="outputBody">
+      <div class="empty-state">
+        <div class="empty-icon">🎬</div>
+        <div class="empty-title">소재를 입력해주세요</div>
+        <div class="empty-sub">키워드 또는 스토리를 입력하면<br>내 채널 데이터와 실제 대본 기반으로<br>제목 · 대본 구조 · 썸네일을 제안해드려요</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="app-footer">
+  <button class="btn btn-ghost" onclick="clearAll()">초기화</button>
+  <button class="btn btn-primary" id="generateBtn" onclick="handleGenerate()" disabled>✨ 콘텐츠 기획 생성하기</button>
+</div>
+
+<script>
+(function() {
+  if (sessionStorage.getItem("creator_auth") === "ok") {
+    var ov = document.getElementById("pwOverlay");
+    if (ov) ov.style.display = "none";
+  }
+})();
+function checkPW() {
+  var val = document.getElementById("pwInput").value;
+  if (val === "0730") {
+    sessionStorage.setItem("creator_auth", "ok");
+    document.getElementById("pwOverlay").style.display = "none";
+  } else {
+    document.getElementById("pwErr").textContent = "비밀번호가 틀렸어요";
+    document.getElementById("pwInput").value = "";
+    setTimeout(function(){ document.getElementById("pwErr").textContent = ""; }, 1200);
+  }
+}
+
+let inputMode="keyword", contentType="mid", isLoading=false, resultText="";
+let outputs={title:true,script:true,thumb:true};
+let styles={draft:true,direction:true};
+
+function setInputMode(m) {
+  inputMode=m;
+  document.getElementById("modeKeyword").classList.toggle("active",m==="keyword");
+  document.getElementById("modeStory").classList.toggle("active",m==="story");
+  document.getElementById("keywordInput").style.display=m==="keyword"?"block":"none";
+  document.getElementById("storyInput").style.display=m==="story"?"block":"none";
+  checkBtn();
+}
+function setType(t) {
+  contentType=t;
+  document.getElementById("typeMid").classList.toggle("active",t==="mid");
+  document.getElementById("typeShorts").classList.toggle("active",t==="shorts");
+}
+function toggleOutput(k) { outputs[k]=!outputs[k]; document.getElementById("out-"+k).classList.toggle("active",outputs[k]); }
+function toggleStyle(k) { styles[k]=!styles[k]; document.getElementById(k==="draft"?"styleDraft":"styleDir").classList.toggle("active",styles[k]); }
+function getTopic() { return inputMode==="keyword"?document.getElementById("topicKeyword").value.trim():document.getElementById("topicStory").value.trim(); }
+function checkBtn() { document.getElementById("generateBtn").disabled=!getTopic()||isLoading; }
+function clearAll() { document.getElementById("topicKeyword").value=""; document.getElementById("topicStory").value=""; document.getElementById("direction").value=""; clearResult(); checkBtn(); }
+function clearResult() {
+  resultText="";
+  document.getElementById("outputBody").innerHTML=`<div class="empty-state"><div class="empty-icon">🎬</div><div class="empty-title">소재를 입력해주세요</div><div class="empty-sub">키워드 또는 스토리를 입력하면<br>내 채널 데이터와 실제 대본 기반으로<br>제목 · 대본 구조 · 썸네일을 제안해드려요</div></div>`;
+  document.getElementById("outputTitle").textContent="🎬 기획 결과가 여기 나타납니다";
+}
+function copyResult() {
+  if(!resultText)return;
+  navigator.clipboard.writeText(resultText).then(()=>{
+    const btn=document.querySelector("[onclick='copyResult()']");
+    btn.textContent="✅ 복사됨"; setTimeout(()=>btn.textContent="📋 전체 복사",1500);
+  });
+}
+function copyTitle(el) {
+  const t=el.querySelector(".title-text").textContent;
+  navigator.clipboard.writeText(t).then(()=>{el.style.borderColor="var(--green)";setTimeout(()=>el.style.borderColor="",1200);});
+}
+
+const CHANNEL_DATA=`[커밍쏜 채널 데이터]
+쇼츠 290개, 미드폼 166개
+미드폼 TOP5: 163만뷰(러닝50일), 98만뷰(중소기업퇴사), 82만뷰(구글임원퇴사), 73만뷰(유튜브540일), 70만뷰(퇴사전11가지)
+쇼츠 TOP5: 320만뷰(대기업연봉공개), 211만뷰(신입연봉BMW), 190만뷰(퇴직금공개), 140만뷰(퇴사하세요), 117만뷰(퇴사후현실)
+최적길이:8~15분 / 터지는패턴:숫자+반전+타겟+현실 / 잘되는소재:퇴사/연봉/유튜브현실/도전변화
+
+[고조회수 대본 구조 패턴 분석 - 인터뷰 제외]
+
+■ 패턴 1: 도전/변화 실험형 (대표: 러닝50일 163만뷰)
+- 훅: "나는 ~을 해봤다" 선언 + 결과 스포 (궁금증 유발)
+- 배경: 왜 이걸 시작했는지 결핍/동기 (30초 이내)
+- 본론: 날짜/단계별 변화 나열 (숫자로 구체화)
+- 반전: 예상과 달랐던 것, 힘들었던 순간
+- 결론: 실제로 어떻게 변했는지 + 한 줄 교훈
+- 마무리: 다음 도전 예고 or 시청자에게 질문
+
+■ 패턴 2: 현실 폭로/고백형 (대표: 유튜브540일 73만뷰, 퇴사전11가지 70만뷰)
+- 훅: "사람들이 모르는 것" or "내가 직접 겪어보니" 선언
+- 공감: 많은 사람들이 기대하는 것 (나도 그랬어 포인트)
+- 반전: 실제로는 이랬다 (충격/실망/의외)
+- 구체화: 리스트 형식으로 현실 나열 (5가지, 11가지 등)
+- 감정: 그 상황에서 내가 느낀 감정 솔직하게
+- 결론: 그래서 내가 얻은 것/배운 것
+
+■ 패턴 3: 퇴사/전환점 스토리형 (대표: 중소기업퇴사 98만뷰)
+- 훅: 극단적 상황 묘사로 시작 (감정 최고조)
+- 배경: 그 회사/상황에 들어가게 된 이유
+- 갈등: 버텼던 이유, 참았던 순간들
+- 결정적 순간: 더 이상 못 버티게 된 한 장면
+- 결단: 퇴사 결정 과정
+- 이후: 퇴사 후 현실, 후회 or 잘했다
+
+■ 공통 훅 공식:
+"[구체적 숫자/기간] + [행동] + [예상 밖 결과]"
+예: "50일 동안 매일 뛰었더니 생긴 변화", "540일 유튜브 올인했더니 남은 것"
+
+■ 공통 구조 원칙:
+- 첫 15초: 결과 or 충격적 장면 먼저 → 이유는 나중에
+- 감정선: 기대→현실→반전→교훈 순서
+- 숫자 필수: 기간/금액/횟수로 구체화
+- 나만의 경험: 일반론 X, 내가 직접 겪은 것만
+- 마지막: 시청자가 행동할 수 있는 한 문장으로 마무리`;
+
+let knowledgeBase=null;
+async function loadKnowledgeBase() {
+  try { const r=await fetch("/knowledge/base.json"); knowledgeBase=await r.json(); } catch(e){}
+}
+loadKnowledgeBase();
+
+function cosineSim(a,b){let d=0,na=0,nb=0;for(let i=0;i<a.length;i++){d+=a[i]*b[i];na+=a[i]*a[i];nb+=b[i]*b[i];}return d/(Math.sqrt(na)*Math.sqrt(nb)+1e-10);}
+function retrieve(v,k=8){if(!knowledgeBase?.documents)return[];const r=[];for(const doc of knowledgeBase.documents)for(const c of(doc.chunks||[])){if(!c.embedding)continue;r.push({docName:doc.name,text:c.text,score:cosineSim(v,c.embedding)});}return r.sort((a,b)=>b.score-a.score).slice(0,k);}
+
+async function handleGenerate() {
+  const topic=getTopic(), direction=document.getElementById("direction").value.trim();
+  if(!topic)return;
+  isLoading=true; document.getElementById("generateBtn").disabled=true;
+  document.getElementById("outputTitle").textContent="✨ 기획 생성 중...";
+  document.getElementById("outputBody").innerHTML=`<div class="loading-wrap"><div class="loading-dots"><div class="loading-dot"></div><div class="loading-dot"></div><div class="loading-dot"></div></div><div class="loading-text" id="loadingText">대본 검색 중...</div></div>`;
+  try {
+    let hits=[];
+    if(knowledgeBase){
+      const er=await fetch("/api/embed",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({texts:[topic],taskType:"RETRIEVAL_QUERY"})});
+      const ed=await er.json();
+      if(ed.embeddings?.[0])hits=retrieve(ed.embeddings[0],8);
+    }
+    const scriptContext=hits.length>0?hits.map(h=>`[${h.docName}]
+${h.text}`).join("
+
+---
+
+"):"(대본 없음)";
+    const outputList=[]; if(outputs.title)outputList.push("제목 후보 5개"); if(outputs.script)outputList.push("대본 구조"); if(outputs.thumb)outputList.push("썸네일 아이디어");
+    const typeStr=contentType==="mid"?"미드폼 (8~15분)":"쇼츠 (60초 이하)";
+    const styleStr=[]; if(styles.draft)styleStr.push("바로 쓸 수 있는 구체적인 초안"); if(styles.direction)styleStr.push("방향 제시 및 핵심 포인트");
+    document.getElementById("loadingText").textContent="AI 기획 중...";
+    const fr=await fetch("/api/feedback",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({question:topic,category:"creator",extraContext:direction,mode:"creator",hits,creatorOptions:{contentType,outputs,outputList,typeStr,styleStr,inputModeStr:inputMode==="keyword"?"키워드":"상황/스토리",channelData:CHANNEL_DATA,scriptContext}})});
+    const fd=await fr.json();
+    if(fd.error)throw new Error(fd.error);
+    resultText=fd.feedback;
+    renderResult(fd.feedback,topic);
+  } catch(e) {
+    document.getElementById("outputBody").innerHTML=`<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">오류가 발생했어요</div><div class="empty-sub">${e.message}</div></div>`;
+  }
+  isLoading=false; document.getElementById("generateBtn").disabled=false;
+  document.getElementById("outputTitle").textContent="✅ 기획 완료";
+}
+
+function renderResult(text,topic) {
+  let html=`<div style="margin-bottom:20px;padding:12px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;"><div style="font-size:10px;color:var(--ink-light);font-family:var(--mono);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">소재</div><div style="font-size:13px;font-weight:600;color:var(--ink);line-height:1.6">${topic}</div></div>`;
+  const titleMatch=text.match(/## 🎯 제목 후보.*?
+([\s\S]*?)(?=## |$)/);
+  const scriptMatch=text.match(/## 📝 대본 구조.*?
+([\s\S]*?)(?=## |$)/);
+  const thumbMatch=text.match(/## 🖼 썸네일.*?
+([\s\S]*?)(?=## |$)/);
+  if(titleMatch){
+    const titles=titleMatch[1].trim().split("
+").reduce((acc,line)=>{
+      const nm=line.match(/^(\d+)\.\s(.+)/), am=line.match(/^→\s(.+)/);
+      if(nm)acc.push({num:nm[1],text:nm[2],reason:""});
+      else if(am&&acc.length>0)acc[acc.length-1].reason=am[1];
+      return acc;
+    },[]);
+    html+=`<div class="result-section"><div class="result-section-header"><span class="result-section-icon">🎯</span><span class="result-section-title">제목 후보 (클릭하면 복사)</span></div><div class="result-section-body">`;
+    titles.forEach(t=>{html+=`<div class="title-item" onclick="copyTitle(this)"><div class="title-num">${t.num}번</div><div class="title-text">${t.text}</div>${t.reason?`<div class="title-reason">→ ${t.reason}</div>`:""}</div>`;});
+    html+=`</div></div>`;
+  }
+  if(scriptMatch)html+=`<div class="result-section"><div class="result-section-header"><span class="result-section-icon">📝</span><span class="result-section-title">대본 구조</span></div><div class="result-section-body">${fmt(scriptMatch[1].trim())}</div></div>`;
+  if(thumbMatch)html+=`<div class="result-section"><div class="result-section-header"><span class="result-section-icon">🖼</span><span class="result-section-title">썸네일 아이디어</span></div><div class="result-section-body">${fmt(thumbMatch[1].trim())}</div></div>`;
+  if(!titleMatch&&!scriptMatch&&!thumbMatch)html+=`<div class="result-section"><div class="result-section-body">${fmt(text)}</div></div>`;
+  document.getElementById("outputBody").innerHTML=html;
+}
+function fmt(t){return t.replace(/\*\*(.*?)\*\*/g,"<strong>$1</strong>").replace(/
+/g,"<br>");}
+</script>
+</body>
+</html>
