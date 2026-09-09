@@ -123,6 +123,22 @@ await t('알 수 없는 상태값 차단',
 await t('답변 20만자 초과 차단',
   () => assertFails(setDoc(doc(heidi, 'playbook', 'p3'), PB({ answer: 'x'.repeat(200001) }))));
 
+console.log('\n── 내부 인사이트 (kbSources) — 커밍쏜 전용 ──');
+const KB = { name: '테스트 소스', type: 'youtube', category: 'general',
+             status: '완료', transcript: '자막 본문', chunks: 3 };
+await t('커밍쏜은 kbSources 읽기 가능',
+  () => assertSucceeds(getDocs(collection(owner, 'kbSources'))));
+await t('커밍쏜은 kbSources 쓰기 가능',
+  () => assertSucceeds(setDoc(doc(owner, 'kbSources', 'k1'), KB)));
+await t('커밍쏜은 kbSources 삭제 가능',
+  () => assertSucceeds(deleteDoc(doc(owner, 'kbSources', 'k1'))));
+await t('일반 디렉터는 kbSources 읽기 차단',
+  () => assertFails(getDocs(collection(heidi, 'kbSources'))));
+await t('일반 디렉터는 kbSources 쓰기 차단',
+  () => assertFails(setDoc(doc(heidi, 'kbSources', 'k2'), KB)));
+await t('화이트리스트 밖 계정도 당연히 차단',
+  () => assertFails(getDocs(collection(stranger, 'kbSources'))));
+
 console.log('\n── 팀 지식 컬렉션 (서버 전용) ──');
 await t('소유자도 브라우저에서 guidelines 읽기 차단',
   () => assertFails(getDoc(doc(owner, 'guidelines', 'g1'))));

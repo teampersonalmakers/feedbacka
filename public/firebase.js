@@ -320,6 +320,52 @@ function gateFatal(detail) {
         return n;
       },
 
+      // ── 지식베이스 원문 (내부 인사이트) — 커밍쏜 전용 ────────────────────
+      // firestore.rules 가 소유자 계정만 허용한다. 디렉터는 여기 못 들어온다.
+      isOwner: () => OWNER_EMAILS.includes(String(user.email || '').toLowerCase()),
+
+      // /api/kb-clean 호출용. 서버가 이 토큰으로 본인 확인을 한다.
+      idToken: () => user.getIdToken(),
+
+      async listKb(max = 500) {
+        const snap = await F.getDocs(F.query(F.collection(db, 'kbSources'), F.limit(max)));
+        return snap.docs
+          .map((d) => Object.assign({ id: d.id }, d.data()))
+          .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      },
+
+      async getKb(id) {
+        const d = await F.getDoc(F.doc(db, 'kbSources', id));
+        return d.exists() ? Object.assign({ id: d.id }, d.data()) : null;
+      },
+
+      async saveKb(id, data) {
+        const t = String(data.transcript || '');
+        const payload = {
+          name: cut(String(data.name || '').trim(), 300),
+          type: data.type || 'youtube',
+          category: data.category || 'general',
+          status: data.status || '완료',
+          link: cut(data.link || '', 500),
+          memo: cut(data.memo || '', 2000),
+          tags: (data.tags || []).slice(0, 10),
+          transcript: t,
+          transcriptChars: t.length,
+          transcriptTruncated: false,
+          updatedAtMs: Date.now(),
+          updatedAt: F.serverTimestamp(),
+        };
+        if (!payload.name) throw new Error('소스명을 입력해주세요');
+        if (id) { await F.setDoc(F.doc(db, 'kbSources', id), payload, { merge: true }); return id; }
+        const ref = F.doc(F.collection(db, 'kbSources'));
+        await F.setDoc(ref, Object.assign({
+          createdAt: Date.now(), source: 'app', sourceId: String(Date.now()), chunks: 0,
+        }, payload));
+        return ref.id;
+      },
+
+      async deleteKb(id) { await F.deleteDoc(F.doc(db, 'kbSources', id)); },
+
       // ── 플레이북 ────────────────────────────────────────────────────────
       // 디렉터가 초안을 쓰고, 커밍쏜(admin)이 승인한다.
       // 승인된 Q&A 만 api/feedback.js 가 시스템 프롬프트에 넣는다.
@@ -553,23 +599,32 @@ function gateFatal(detail) {
     const host = document.querySelector('header, .top-bar, .header');
     if (!host) return;
 
-    // 플레이북 링크 — 플레이북 페이지 자신에서는 띄우지 않는다.
-    if (!/\/playbook(\.html)?$/.test(location.pathname)) {
+    // 내비게이션 — 현재 페이지에 해당하는 링크는 띄우지 않는다.
+    // '내부 인사이트'는 소유자 계정에만 보인다(규칙에서도 막혀 있다).
+    const links = [
+      { id: 'pmNavPlaybook', href: '/playbook.html', label: '📒 플레이북', match: /\/playbook(\.html)?$/, show: true },
+      { id: 'pmNavInsight', href: '/insight.html', label: '🔒 내부 인사이트', match: /\/insight(\.html)?$/, show: api.isOwner() },
+    ];
+    let first = true;
+    for (const l of links) {
+      if (!l.show || l.match.test(location.pathname)) continue;
       const nav = document.createElement('a');
-      nav.id = 'pmNavPlaybook';
-      nav.href = '/playbook.html';
-      nav.textContent = '📒 플레이북';
+      nav.id = l.id;
+      nav.href = l.href;
+      nav.textContent = l.label;
       nav.style.cssText =
-        'margin-left:auto;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);' +
+        (first ? 'margin-left:auto;' : '') +
+        'background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);' +
         'color:inherit;opacity:.85;border-radius:20px;padding:5px 12px;font-size:11.5px;font-weight:700;' +
         'cursor:pointer;font-family:inherit;white-space:nowrap;text-decoration:none;margin-right:8px;';
       host.appendChild(nav);
+      first = false;
     }
     const b = document.createElement('button');
     b.id = 'pmauthBadge';
     b.type = 'button';
     b.style.cssText =
-      (document.getElementById('pmNavPlaybook') ? '' : 'margin-left:auto;') +
+      (document.getElementById('pmNavPlaybook') || document.getElementById('pmNavInsight') ? '' : 'margin-left:auto;') +
       'background:rgba(200,98,42,.14);border:1px solid rgba(200,98,42,.35);' +
       'color:#c8622a;border-radius:20px;padding:5px 12px;font-size:11.5px;font-weight:700;' +
       'cursor:pointer;font-family:inherit;white-space:nowrap;';

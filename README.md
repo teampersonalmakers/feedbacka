@@ -5,7 +5,9 @@
 ```
 api/          Vercel 서버리스 함수
   _firestore.js  서버사이드 Firestore 데이터 레이어 (Admin SDK)
+  _auth.js       Firebase ID 토큰 검증 (소유자 전용 API 보호)
   feedback.js    RAG 검색 + Claude 피드백 생성 (SSE 스트리밍)
+  kb-clean.js    유튜브 자막 오타·문장부호 교정 (커밍쏜 전용)
   embed.js       Gemini 임베딩
   ocr.js         Claude Vision 워크시트 OCR
   rate.js        평가 기록
@@ -18,6 +20,7 @@ public/       정적 페이지
   creator.html   콘텐츠 기획 생성기
   member.html    경량 페이지 (디렉터 전용)
   playbook.html  플레이북 — 디렉터가 Q&A 작성, 커밍쏜이 승인
+  insight.html   내부 인사이트 — 지식베이스 원문 (커밍쏜 전용)
   firebase.js    인증 + Firestore + Storage 연동 레이어
 scripts/
   migrate-notion-to-firestore.mjs   노션 → Firestore 데이터 이전
@@ -141,6 +144,41 @@ api/feedback.js 가 시스템 프롬프트에 주입  →  AI 피드백 정확�
 | `category` | 유튜브 브랜딩(로드맵) · 채널운영(콘텐츠관점) · 광고&협업(외부 상품) · 수익화(본인 상품) · 팀퍼메스운영 |
 | `director` / `student` | 작성 디렉터 / 수강생 |
 | `approvedBy` / `approvedAtMs` | 승인자와 시각 |
+
+---
+
+## 내부 인사이트 — 지식베이스 원문 (커밍쏜 전용)
+
+`/insight.html` (헤더의 `🔒 내부 인사이트`). AI 가 참고하는 모든 소스의 원문을
+모아 보는 화면입니다. **커밍쏜 계정만** 들어갑니다 — `admin` 역할을 가진 디렉터도
+차단됩니다. `firestore.rules` 의 `isOwnerOnly()` 가 강제합니다.
+
+### 유튜브 자막 넣는 법
+
+유튜브는 **데이터센터 IP 를 차단**합니다. 서버(Vercel 서버리스)에서 자막을 긁으면
+`LOGIN_REQUIRED` 로 막히고, 이 저장소의 어떤 코드도 자막을 자동으로 받아올 수
+없습니다. 대신 **브라우저에서는 잘 됩니다.**
+
+```
+유튜브 영상 → 설명 아래 [스크립트 표시] → 패널 전체 복사
+        ↓
+내부 인사이트 → [＋ 자막 추가] → 붙여넣기   (타임스탬프 자동 제거)
+        ↓
+[✨ 오타 교정]  → Claude 가 문장부호·고유명사 정리
+        ↓
+[저장]  → Firestore kbSources
+```
+
+`0:00 지금 저는…` 같은 타임스탬프는 붙여넣는 즉시 걷어냅니다.
+
+교정은 `api/kb-clean.js` 가 처리합니다. 긴 자막은 문장 경계로 나눠 순차 처리하며,
+요약하지 않고 모든 발화를 보존합니다.
+
+### 이 자막은 AI 가 바로 읽지 않습니다
+
+AI 가 실제로 검색하는 것은 `knowledge/base*.json` 의 **미리 임베딩된 청크**입니다.
+`kbSources` 는 원문 보관과 대장(臺帳) 역할입니다. 새 자막을 AI 에 반영하려면
+임베딩을 다시 만들어야 합니다.
 
 ---
 

@@ -34,6 +34,12 @@ service cloud.firestore {
       return signedIn() && (isOwnerAccount() || listedDirector());
     }
 
+    // 커밍쏜 본인만. admin 역할을 가진 디렉터도 통과하지 못한다.
+    // '내부 인사이트'(지식베이스 원문 자산)는 이 계정만 본다.
+    function isOwnerOnly() {
+      return signedIn() && isOwnerAccount();
+    }
+
     // 소유자, 또는 role 이 admin 인 디렉터. 화이트리스트를 관리할 수 있다.
     function isAdmin() {
       return signedIn()
@@ -155,9 +161,22 @@ service cloud.firestore {
     // 클라이언트로 새어나가지 않게 하기 위해서다.
     match /guidelines/{id} { allow read, write: if false; }
     match /cases/{id}      { allow read, write: if false; }
-    match /kbSources/{id}  { allow read, write: if false; }
     match /ratings/{id}    { allow read, write: if false; }
     match /history/{id}    { allow read, write: if false; }
+
+    // ── 지식베이스 원문 (내부 인사이트) ────────────────────────────────────
+    // 유튜브 자막·컨설팅 전문이 담긴 원본 자산. 디렉터에게도 열지 않는다.
+    // 커밍쏜 본인 계정만 읽고 쓴다.
+    match /kbSources/{id} {
+      allow read: if isOwnerOnly();
+      allow create, update: if isOwnerOnly()
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 300
+        && request.resource.data.get('transcript', '') is string
+        && sizeOk();
+      allow delete: if isOwnerOnly();
+    }
 
     // 위에서 명시하지 않은 경로는 전부 차단
     match /{document=**} {

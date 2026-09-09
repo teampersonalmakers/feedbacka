@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>내부 인사이트 · Personalmakers AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700&family=Noto+Serif+KR:wght@400;600;700&display=swap" rel="stylesheet" />
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #f9f7f4; --paper: #fff; --border: #ebe6dc;
+  --ink: #1c1a17; --ink-mid: #4a4540; --ink-light: #9a9288;
+  --accent: #c8622a; --accent-soft: #faf0ea; --accent-border: #e8c4a8;
+  --warm-dark: #3d2e22; --ok: #2d7a4a; --ok-soft: #eaf5ee;
+  --font: 'Pretendard', 'Apple SD Gothic Neo', sans-serif;
+  --serif: 'Noto Serif KR', Georgia, serif;
+  --shadow: 0 2px 8px rgba(0,0,0,.06), 0 8px 32px rgba(0,0,0,.04);
+}
+body { background: var(--bg); color: var(--ink); font-family: var(--font); min-height: 100vh; }
+#pwGate { position: fixed; inset: 0; z-index: 9999; background: #1c1a17;
+  display: flex; align-items: center; justify-content: center; }
+
+.header { background: var(--warm-dark); padding: 16px 28px; display: flex; align-items: center; gap: 14px; }
+.header-brand { display: flex; align-items: center; gap: 12px; }
+.header-avatar { width: 34px; height: 34px; border-radius: 50%;
+  background: linear-gradient(135deg, #6b5b4a, #3d2e22); display: grid; place-items: center; font-size: 15px; }
+.header-name { font-family: var(--serif); font-size: 16px; color: #f5f0e8; }
+.header-sub { font-size: 10.5px; color: rgba(255,255,255,.42); margin-top: 1px; }
+.header .spacer { flex: 1; }
+.header a.home { color: rgba(255,255,255,.55); font-size: 11.5px; font-weight: 700;
+  text-decoration: none; border: 1px solid rgba(255,255,255,.14); border-radius: 20px; padding: 5px 12px; }
+.header a.home:hover { color: #e8a878; border-color: rgba(200,98,42,.5); }
+
+.wrap { max-width: 1180px; margin: 0 auto; padding: 24px 20px 60px; }
+.intro { margin-bottom: 18px; }
+.intro h1 { font-family: var(--serif); font-size: 21px; margin-bottom: 6px; }
+.intro p { font-size: 13px; color: var(--ink-mid); line-height: 1.7; }
+
+/* Stats */
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px; margin-bottom: 18px; }
+.stat { background: var(--paper); border: 1px solid var(--border); border-radius: 11px;
+  padding: 14px 16px; box-shadow: var(--shadow); }
+.stat .k { font-size: 10.5px; font-weight: 700; color: var(--ink-light); letter-spacing: .4px; }
+.stat .v { font-family: var(--serif); font-size: 21px; margin-top: 5px; letter-spacing: -.4px; }
+.stat .v small { font-size: 12px; color: var(--ink-light); font-family: var(--font); margin-left: 3px; }
+
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 14px; }
+.tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.tab { padding: 7px 13px; border-radius: 18px; border: 1px solid var(--border);
+  background: var(--paper); color: var(--ink-mid); font-family: var(--font);
+  font-size: 12px; font-weight: 600; cursor: pointer; }
+.tab.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.tab .n { opacity: .65; margin-left: 4px; font-size: 11px; }
+.grow { flex: 1; }
+.search { border: 1px solid var(--border); border-radius: 9px; padding: 8px 12px;
+  font-family: var(--font); font-size: 12.5px; width: 210px; background: var(--paper); color: var(--ink); }
+.search:focus { outline: none; border-color: var(--accent); }
+.btn { border: 0; border-radius: 9px; padding: 9px 15px; font-family: var(--font);
+  font-size: 12.5px; font-weight: 700; cursor: pointer; }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: #b8551f; }
+.btn-ghost { background: var(--paper); border: 1px solid var(--border); color: var(--ink-mid); }
+.btn-ghost:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.btn-ok { background: var(--ok); color: #fff; }
+.btn-danger { background: none; border: 1px solid var(--border); color: #b04a3c; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+
+.list { background: var(--paper); border: 1px solid var(--border); border-radius: 12px;
+  overflow: hidden; box-shadow: var(--shadow); }
+.row { display: grid; grid-template-columns: 1fr 104px 104px 108px;
+  gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border);
+  align-items: center; cursor: pointer; }
+.row:last-child { border-bottom: 0; }
+.row:hover { background: var(--bg); }
+.row.head { background: var(--bg); font-size: 11px; font-weight: 700; color: var(--ink-light);
+  letter-spacing: .4px; cursor: default; text-transform: uppercase; }
+.row.head:hover { background: var(--bg); }
+.nm { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nm .sub { display: block; font-size: 11px; font-weight: 400; color: var(--ink-light); margin-top: 3px; }
+.cell { font-size: 11.5px; color: var(--ink-mid); }
+.pill { display: inline-block; font-size: 10.5px; font-weight: 700; border-radius: 5px; padding: 3px 8px; white-space: nowrap; }
+.t-youtube { background: #fdeaea; color: #b5372f; }
+.t-consulting { background: var(--ok-soft); color: var(--ok); }
+.t-book, .t-ebook { background: #eef0f8; color: #4b5a8f; }
+.t-faq, .t-notion_page, .t-other { background: #f0eee9; color: #7a746c; }
+.has { color: var(--ok); font-weight: 700; }
+.none { color: #b04a3c; font-weight: 700; }
+.empty { padding: 48px 20px; text-align: center; color: var(--ink-light); font-size: 13px; line-height: 1.8; }
+.empty .icon { font-size: 30px; margin-bottom: 10px; }
+
+.back { position: fixed; inset: 0; z-index: 200; background: rgba(28,26,23,.5);
+  display: flex; align-items: center; justify-content: center; padding: 20px; }
+.modal { background: var(--paper); border-radius: 14px; width: min(860px, 100%);
+  max-height: 92vh; overflow: auto; box-shadow: 0 24px 70px rgba(0,0,0,.28); }
+.modal-head { padding: 18px 22px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 10px; position: sticky; top: 0; background: var(--paper); z-index: 1; }
+.modal-head h3 { font-family: var(--serif); font-size: 16px; flex: 1;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.modal-body { padding: 20px 22px; display: flex; flex-direction: column; gap: 14px; }
+.field label { display: block; font-size: 11.5px; font-weight: 700; color: var(--ink-light); margin-bottom: 6px; }
+.field label .req { color: var(--accent); }
+.field input, .field select, .field textarea {
+  width: 100%; border: 1px solid var(--border); border-radius: 9px; padding: 11px 13px;
+  font-family: var(--font); font-size: 13.5px; color: var(--ink); background: var(--bg); }
+.field input:focus, .field select:focus, .field textarea:focus {
+  outline: none; border-color: var(--accent); background: var(--paper); }
+.field textarea { resize: vertical; line-height: 1.8; }
+.field .help { font-size: 11px; color: var(--ink-light); margin-top: 5px; line-height: 1.65; }
+.three { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.modal-foot { padding: 16px 22px; border-top: 1px solid var(--border);
+  display: flex; gap: 8px; align-items: center; position: sticky; bottom: 0; background: var(--paper); }
+.msg { font-size: 12px; min-height: 16px; }
+.msg.err { color: #b04a3c; } .msg.ok { color: var(--ok); }
+.tip { background: var(--accent-soft); border: 1px solid var(--accent-border); border-radius: 9px;
+  padding: 12px 14px; font-size: 12px; color: #8a4419; line-height: 1.75; }
+.tip b { font-weight: 700; }
+.script { background: var(--bg); border: 1px solid var(--border); border-radius: 9px;
+  padding: 16px 18px; font-size: 13.5px; line-height: 1.95; white-space: pre-wrap;
+  max-height: 46vh; overflow: auto; }
+
+@media (max-width: 860px) {
+  .row { grid-template-columns: 1fr 104px; }
+  .row .hide-sm { display: none; }
+  .three { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<div id="pwGate"></div>
+
+<header class="header">
+  <div class="header-brand">
+    <div class="header-avatar">🔒</div>
+    <div>
+      <div class="header-name">내부 인사이트</div>
+      <div class="header-sub">지식베이스 원문 자산 · 커밍쏜 전용</div>
+    </div>
+  </div>
+  <div class="spacer"></div>
+  <a class="home" href="/">← 코치로 돌아가기</a>
+</header>
+
+<div class="wrap">
+  <div class="intro">
+    <h1>지식베이스 원문</h1>
+    <p>AI가 참고하는 모든 소스의 원문입니다. 유튜브 자막, 컨설팅 녹취, 책·전자책이 여기 모입니다.</p>
+  </div>
+
+  <div class="stats" id="stats"></div>
+
+  <div class="toolbar">
+    <div class="tabs" id="tabs"></div>
+    <div class="grow"></div>
+    <input class="search" id="search" placeholder="소스명·자막 내용 검색" />
+    <button class="btn btn-primary" id="newBtn">＋ 자막 추가</button>
+  </div>
+
+  <div class="list" id="list">
+    <div class="empty"><div class="icon">🔒</div>불러오는 중…</div>
+  </div>
+</div>
+
+<script>
+// ─── 접근 통제 ───────────────────────────────────────────────────────────────
+// 구글 로그인 + 소유자 계정 확인을 firebase.js 가 담당한다.
+// kbSources 는 firestore.rules 에서 커밍쏜 계정만 읽고 쓸 수 있다.
+(function() {
+  var gate = document.getElementById('pwGate');
+  if (gate) gate.style.display = 'flex';
+})();
+
+var TYPES = ['youtube', 'consulting', 'book', 'ebook', 'faq', 'notion_page', 'other'];
+var CATEGORIES = ['channel', 'content', 'script', 'thumbnail', 'monetization', 'operation', 'branding', 'general'];
+
+var rows = [], filter = '전체', keyword = '';
+
+function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
+function man(n) { return n >= 10000 ? (n / 10000).toFixed(1) + '만' : n.toLocaleString(); }
+
+// 유튜브 스크립트 패널을 그대로 붙여넣어도 되도록 타임스탬프를 걷어낸다.
+// "0:00 지금 저는…" 도, 타임스탬프만 있는 줄도 모두 처리한다.
+function stripTimestamps(raw) {
+  var out = [];
+  String(raw).replace(/\r/g, '').split('\n').forEach(function(line) {
+    line = line.trim();
+    if (!line) return;
+    if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(line)) return;
+    line = line.replace(/^\d{1,2}:\d{2}(:\d{2})?\s*/, '').trim();
+    if (line) out.push(line);
+  });
+  return out.join(' ').replace(/\s+/g, ' ').trim();
+}
+
+function videoId(url) {
+  var m = String(url).match(/(?:youtu\.be\/|[?&]v=|\/embed\/|\/shorts\/)([A-Za-z0-9_-]{11})/);
+  return m ? m[1] : '';
+}
+
+// ─── 화면 ───────────────────────────────────────────────────────────────────
+function visible() {
+  var kw = keyword.trim().toLowerCase();
+  return rows.filter(function(r) {
+    if (filter === '자막 없음') { if ((r.transcript || '').length) return false; }
+    else if (filter !== '전체' && (r.type || '') !== filter) return false;
+    if (!kw) return true;
+    return ((r.name || '') + ' ' + (r.memo || '') + ' ' + (r.transcript || '')).toLowerCase().indexOf(kw) >= 0;
+  });
+}
+
+function renderStats() {
+  var withT = rows.filter(function(r) { return (r.transcript || '').length; });
+  var chars = withT.reduce(function(a, r) { return a + r.transcript.length; }, 0);
+  var chunks = rows.reduce(function(a, r) { return a + (r.chunks || 0); }, 0);
+  var cards = [
+    ['전체 소스', rows.length, '건'],
+    ['자막 확보', withT.length + ' / ' + rows.length, '건'],
+    ['원문 총량', man(chars), '자'],
+    ['임베딩 청크', chunks.toLocaleString(), '개'],
+  ];
+  document.getElementById('stats').innerHTML = cards.map(function(c) {
+    return '<div class="stat"><div class="k">' + esc(c[0]) + '</div>' +
+           '<div class="v">' + esc(String(c[1])) + '<small>' + esc(c[2]) + '</small></div></div>';
+  }).join('');
+}
+
+function renderTabs() {
+  var counts = { '전체': rows.length, '자막 없음': rows.filter(function(r){ return !(r.transcript||'').length; }).length };
+  TYPES.forEach(function(t) { counts[t] = rows.filter(function(r) { return r.type === t; }).length; });
+  var el = document.getElementById('tabs');
+  el.innerHTML = '';
+  ['전체'].concat(TYPES.filter(function(t){ return counts[t]; })).concat(['자막 없음']).forEach(function(t) {
+    var b = document.createElement('button');
+    b.className = 'tab' + (filter === t ? ' on' : '');
+    b.innerHTML = esc(t) + '<span class="n">' + (counts[t] || 0) + '</span>';
+    b.onclick = function() { filter = t; render(); };
+    el.appendChild(b);
+  });
+}
+
+function renderList() {
+  var el = document.getElementById('list'), list = visible();
+  el.innerHTML = '';
+  var head = document.createElement('div');
+  head.className = 'row head';
+  head.innerHTML = '<div>소스명</div><div class="hide-sm">유형</div><div class="hide-sm">카테고리</div><div>자막</div>';
+  el.appendChild(head);
+
+  if (!list.length) {
+    var e = document.createElement('div');
+    e.className = 'empty';
+    e.innerHTML = rows.length ? '<div class="icon">🔍</div>조건에 맞는 소스가 없습니다.'
+      : '<div class="icon">🔒</div>아직 소스가 없습니다.<br>유튜브 스크립트를 붙여넣어 추가해보세요.';
+    el.appendChild(e);
+    return;
+  }
+
+  list.forEach(function(r) {
+    var n = (r.transcript || '').length;
+    var d = document.createElement('div');
+    d.className = 'row';
+    d.onclick = function() { openDetail(r); };
+    d.innerHTML =
+      '<div class="nm">' + esc(r.name || '(이름 없음)') +
+        (r.memo ? '<span class="sub">' + esc(r.memo) + '</span>' : '') + '</div>' +
+      '<div class="cell hide-sm"><span class="pill t-' + esc(r.type || 'other') + '">' + esc(r.type || '?') + '</span></div>' +
+      '<div class="cell hide-sm">' + esc(r.category || '') + '</div>' +
+      '<div class="cell ' + (n ? 'has' : 'none') + '">' + (n ? man(n) + '자' : '없음') + '</div>';
+    el.appendChild(d);
+  });
+}
+
+function render() { renderStats(); renderTabs(); renderList(); }
+
+// ─── 상세 ───────────────────────────────────────────────────────────────────
+async function openDetail(r) {
+  var full = r;
+  var back = document.createElement('div');
+  back.className = 'back';
+  back.innerHTML =
+    '<div class="modal">' +
+      '<div class="modal-head"><h3>' + esc(r.name || '') + '</h3>' +
+        '<button class="btn btn-ghost" id="dClose">닫기</button></div>' +
+      '<div class="modal-body">' +
+        '<div class="cell">' +
+          '<span class="pill t-' + esc(r.type || 'other') + '">' + esc(r.type || '?') + '</span> ' +
+          esc(r.category || '') + ' · 청크 ' + (r.chunks || 0) + '개' +
+          (r.link ? ' · <a href="' + esc(r.link) + '" target="_blank" rel="noopener">원본 링크</a>' : '') +
+        '</div>' +
+        (r.memo ? '<div class="cell">' + esc(r.memo) + '</div>' : '') +
+        '<div class="field"><label>원문 자막 <span id="dLen"></span></label>' +
+          '<div class="script" id="dScript">불러오는 중…</div></div>' +
+      '</div>' +
+      '<div class="modal-foot">' +
+        '<button class="btn btn-danger" id="dDel">삭제</button>' +
+        '<div class="msg" id="dMsg"></div><div class="grow"></div>' +
+        '<button class="btn btn-ghost" id="dCopy">자막 복사</button>' +
+        '<button class="btn btn-primary" id="dEdit">자막 교체</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(back);
+  var $ = function(id) { return back.querySelector('#' + id); };
+  var close = function() { back.remove(); };
+  $('dClose').onclick = close;
+  back.onclick = function(e) { if (e.target === back) close(); };
+
+  // 목록은 가벼우니 상세를 열 때 전문을 다시 읽는다.
+  try { full = (await window.PMFire.getKb(r.id)) || r; } catch (e) {}
+  var t = full.transcript || '';
+  $('dScript').textContent = t || '(자막이 없습니다)';
+  $('dLen').textContent = t ? '· ' + man(t.length) + '자' : '';
+
+  $('dCopy').onclick = function() {
+    navigator.clipboard.writeText(t);
+    $('dCopy').textContent = '✓ 복사됨';
+    setTimeout(function() { $('dCopy').textContent = '자막 복사'; }, 1500);
+  };
+  $('dEdit').onclick = function() { close(); openEditor(full); };
+  $('dDel').onclick = async function() {
+    if (!confirm('이 소스를 삭제할까요? 되돌릴 수 없습니다.')) return;
+    try { await window.PMFire.deleteKb(r.id); close(); await reload(); }
+    catch (e) { $('dMsg').className = 'msg err'; $('dMsg').textContent = '삭제 실패: ' + e.message; }
+  };
+}
+
+// ─── 추가 / 교체 ────────────────────────────────────────────────────────────
+function openEditor(row) {
+  var r = row || { name: '', type: 'youtube', category: 'general', link: '', memo: '', transcript: '' };
+  var back = document.createElement('div');
+  back.className = 'back';
+  back.innerHTML =
+    '<div class="modal">' +
+      '<div class="modal-head"><h3>' + (row ? '자막 교체' : '자막 추가') + '</h3>' +
+        '<button class="btn btn-ghost" id="eClose">닫기</button></div>' +
+      '<div class="modal-body">' +
+        '<div class="tip">유튜브 영상 아래 <b>스크립트 표시</b>를 누르면 자막 패널이 열립니다. ' +
+          '그 내용을 전체 선택해 복사한 뒤 아래에 붙여넣으세요. ' +
+          '<b>타임스탬프는 자동으로 걷어냅니다.</b><br>' +
+          '붙여넣은 뒤 <b>오타 교정</b>을 누르면 문장부호와 고유명사를 다듬어줍니다.</div>' +
+        '<div class="field"><label>원본 링크</label>' +
+          '<input id="eLink" placeholder="https://youtu.be/..."></div>' +
+        '<div class="field"><label>소스명 <span class="req">*</span></label>' +
+          '<input id="eName" maxlength="300" placeholder="예: 유튜브 완전히 뒤바뀌었어요"></div>' +
+        '<div class="three">' +
+          '<div class="field"><label>유형</label><select id="eType"></select></div>' +
+          '<div class="field"><label>카테고리</label><select id="eCat"></select></div>' +
+          '<div class="field"><label>메모</label><input id="eMemo" maxlength="200" placeholder="선택"></div>' +
+        '</div>' +
+        '<div class="field"><label>자막 <span class="req">*</span> <span id="eLen"></span></label>' +
+          '<textarea id="eText" rows="14" placeholder="유튜브 스크립트 패널 내용을 그대로 붙여넣으세요."></textarea>' +
+          '<div class="help" id="eHelp">붙여넣으면 타임스탬프를 정리해 글자수를 표시합니다.</div></div>' +
+      '</div>' +
+      '<div class="modal-foot">' +
+        '<div class="msg" id="eMsg"></div><div class="grow"></div>' +
+        '<button class="btn btn-ghost" id="eClean">✨ 오타 교정</button>' +
+        '<button class="btn btn-primary" id="eSave">저장</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(back);
+  var $ = function(id) { return back.querySelector('#' + id); };
+  $('eType').innerHTML = TYPES.map(function(t) { return '<option>' + esc(t) + '</option>'; }).join('');
+  $('eCat').innerHTML = CATEGORIES.map(function(c) { return '<option>' + esc(c) + '</option>'; }).join('');
+  $('eName').value = r.name || ''; $('eLink').value = r.link || '';
+  $('eMemo').value = r.memo || ''; $('eText').value = r.transcript || '';
+  $('eType').value = r.type || 'youtube'; $('eCat').value = r.category || 'general';
+
+  var close = function() { back.remove(); };
+  $('eClose').onclick = close;
+  back.onclick = function(e) { if (e.target === back) close(); };
+
+  function len() {
+    var n = stripTimestamps($('eText').value).length;
+    $('eLen').textContent = n ? '· 정리 후 ' + man(n) + '자' : '';
+  }
+  $('eText').addEventListener('input', len);
+  $('eText').addEventListener('paste', function() { setTimeout(len, 0); });
+  len();
+
+  $('eClean').onclick = async function() {
+    var msg = $('eMsg'), btn = $('eClean');
+    var text = stripTimestamps($('eText').value);
+    if (text.length < 20) { msg.className = 'msg err'; msg.textContent = '자막을 먼저 붙여넣어주세요'; return; }
+    btn.disabled = true;
+    msg.className = 'msg ok'; msg.textContent = '교정 중… 분량에 따라 1~3분 걸립니다';
+    try {
+      var token = await window.PMFire.idToken();
+      var res = await fetch('/api/kb-clean', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({ text: text }),
+      });
+      var d = await res.json();
+      if (d.error) throw new Error(d.error);
+      $('eText').value = d.cleaned;
+      len();
+      msg.className = 'msg ok';
+      msg.textContent = '교정 완료 · ' + man(d.beforeChars) + '자 → ' + man(d.afterChars) + '자';
+    } catch (e) {
+      msg.className = 'msg err'; msg.textContent = '교정 실패: ' + e.message;
+    }
+    btn.disabled = false;
+  };
+
+  $('eSave').onclick = async function() {
+    var msg = $('eMsg'), btn = $('eSave');
+    var text = stripTimestamps($('eText').value);
+    if (!$('eName').value.trim()) { msg.className = 'msg err'; msg.textContent = '소스명을 입력해주세요'; return; }
+    if (text.length < 20) { msg.className = 'msg err'; msg.textContent = '자막을 붙여넣어주세요'; return; }
+    btn.disabled = true;
+    try {
+      await window.PMFire.saveKb(row && row.id, {
+        name: $('eName').value, type: $('eType').value, category: $('eCat').value,
+        link: $('eLink').value, memo: $('eMemo').value, transcript: text,
+      });
+      close(); await reload();
+    } catch (e) {
+      msg.className = 'msg err';
+      msg.textContent = /permission|PERMISSION/i.test(e.message)
+        ? '권한이 없습니다. 커밍쏜 계정으로 로그인해주세요.' : '저장 실패: ' + e.message;
+      btn.disabled = false;
+    }
+  };
+
+  $('eName').focus();
+}
+
+// ─── 로드 ───────────────────────────────────────────────────────────────────
+async function reload() {
+  try {
+    rows = await window.PMFire.listKb(500);
+    render();
+  } catch (e) {
+    document.getElementById('list').innerHTML =
+      '<div class="empty"><div class="icon">🔒</div>' +
+      (/permission|PERMISSION/i.test(e.message)
+        ? '커밍쏜 계정만 볼 수 있는 페이지입니다.'
+        : '불러오지 못했습니다.<br>' + esc(e.message)) + '</div>';
+  }
+}
+
+document.getElementById('newBtn').onclick = function() { if (window.PMFire) openEditor(null); };
+document.getElementById('search').addEventListener('input', function(e) {
+  keyword = e.target.value; renderList();
+});
+window.addEventListener('pmfire:ready', reload);
+if (window.PMFire) reload();
+</script>
+<script type="module" src="/firebase.js"></script>
+</body>
+</html>
