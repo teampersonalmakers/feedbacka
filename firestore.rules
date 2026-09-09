@@ -110,13 +110,50 @@ service cloud.firestore {
       }
     }
 
-    // ── 팀 지식 (노션에서 옮겨온 것) ───────────────────────────────────────
-    // 지침 / 플레이북 / 디렉팅 사례 / KB 소스 / 평가 / 자동기록.
+    // ── 플레이북 (앱에서 디렉터가 직접 작성 / 커밍쏜이 승인) ───────────────
+    //
+    // 상태가 '승인'이 되면 api/feedback.js 가 그 Q&A 를 시스템 프롬프트에 넣는다.
+    // 즉 승인 권한 = AI 행동을 바꾸는 권한이다. 그래서 승인은 admin 전용이고,
+    // 이미 승인된 문서를 일반 디렉터가 수정하는 것도 막는다.
+    match /playbook/{id} {
+
+      function validPlaybook() {
+        return request.resource.data.question is string
+          && request.resource.data.question.size() > 0
+          && request.resource.data.question.size() <= 500
+          && request.resource.data.answer is string
+          && request.resource.data.answer.size() <= 200000
+          && request.resource.data.get('originalQuestion', '') is string
+          && request.resource.data.get('originalQuestion', '').size() <= 60000
+          && request.resource.data.status in ['대기', '답변작성', '승인', '보류', '자동기록']
+          && request.resource.data.get('category', '') is string
+          && request.resource.data.get('director', '') is string
+          && request.resource.data.get('director', '').size() <= 50
+          && request.resource.data.get('student', '') is string
+          && request.resource.data.get('student', '').size() <= 100
+          && sizeOk();
+      }
+
+      allow read: if isDirector();
+
+      // 일반 디렉터: 초안 작성과 수정. 승인 상태는 만들 수도, 바꿀 수도 없다.
+      allow create: if isDirector() && validPlaybook()
+        && request.resource.data.status in ['대기', '답변작성', '보류'];
+      allow update: if isDirector() && validPlaybook()
+        && resource.data.status != '승인'
+        && request.resource.data.status != '승인';
+
+      // 커밍쏜(admin): 승인·보류 전환과 답변 조정, 삭제
+      allow create, update: if isAdmin() && validPlaybook();
+      allow delete: if isAdmin();
+    }
+
+    // ── 그 밖의 팀 지식 (서버 전용) ────────────────────────────────────────
+    // 지침 / 디렉팅 사례 / KB 소스 / 평가 / 자동기록.
     // 서버(Admin SDK)는 규칙을 우회하므로 api/*.js 는 정상 동작하고,
     // 브라우저에서는 읽기·쓰기 모두 막힌다. 커밍쏜의 컨설팅 자산이
     // 클라이언트로 새어나가지 않게 하기 위해서다.
     match /guidelines/{id} { allow read, write: if false; }
-    match /playbook/{id}   { allow read, write: if false; }
     match /cases/{id}      { allow read, write: if false; }
     match /kbSources/{id}  { allow read, write: if false; }
     match /ratings/{id}    { allow read, write: if false; }

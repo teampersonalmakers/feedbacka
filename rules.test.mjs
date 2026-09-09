@@ -79,11 +79,53 @@ await t('디렉터는 자기 화이트리스트 항목 읽기 가능',
 await t('디렉터가 남의 화이트리스트 항목 읽기 차단',
   () => assertFails(getDoc(doc(heidi, 'directors', 'davin@example.com'))));
 
+console.log('\n── 플레이북: 작성 ──');
+const PB = (over = {}) => Object.assign({
+  question: '조회수가 안 나와요', originalQuestion: '조회수가 잘 안 나오는데 뭐가 문제일까요',
+  answer: '먼저 주제가 뾰족한지 봅니다.', status: '답변작성',
+  category: '채널운영(콘텐츠관점)', director: '헤이디', student: '', type: '수동등록',
+}, over);
+
+await t('디렉터는 초안(답변작성) 생성 가능',
+  () => assertSucceeds(setDoc(doc(heidi, 'playbook', 'p1'), PB())));
+await t('디렉터는 자기 초안 수정 가능',
+  () => assertSucceeds(setDoc(doc(heidi, 'playbook', 'p1'), PB({ answer: '수정된 답변' }))));
+await t('디렉터는 남이 만든 초안도 수정 가능 (팀 자산)',
+  () => assertSucceeds(setDoc(doc(owner, 'playbook', 'p1'), PB({ answer: '커밍쏜이 다듬음' }))));
+await t('디렉터는 플레이북 읽기 가능',
+  () => assertSucceeds(getDocs(collection(heidi, 'playbook'))));
+await t('화이트리스트 밖 계정은 플레이북 읽기 차단',
+  () => assertFails(getDocs(collection(stranger, 'playbook'))));
+
+console.log('\n── 플레이북: 승인 권한 (핵심) ──');
+await t('디렉터가 바로 승인 상태로 생성 → 차단',
+  () => assertFails(setDoc(doc(heidi, 'playbook', 'p2'), PB({ status: '승인' }))));
+await t('디렉터가 초안을 승인으로 전환 → 차단',
+  () => assertFails(setDoc(doc(heidi, 'playbook', 'p1'), PB({ status: '승인' }))));
+await t('커밍쏜(admin)은 승인 전환 가능',
+  () => assertSucceeds(setDoc(doc(owner, 'playbook', 'p1'), PB({ status: '승인' }))));
+await t('승인된 문서를 디렉터가 수정 → 차단 (AI 프롬프트 보호)',
+  () => assertFails(setDoc(doc(heidi, 'playbook', 'p1'), PB({ status: '승인', answer: '몰래 바꾼 답변' }))));
+await t('승인된 문서를 디렉터가 초안으로 되돌리기 → 차단',
+  () => assertFails(setDoc(doc(heidi, 'playbook', 'p1'), PB({ status: '답변작성' }))));
+await t('커밍쏜(admin)은 승인된 문서 수정 가능',
+  () => assertSucceeds(setDoc(doc(owner, 'playbook', 'p1'), PB({ status: '승인', answer: '재조정' }))));
+await t('디렉터는 삭제 차단',
+  () => assertFails(deleteDoc(doc(heidi, 'playbook', 'p1'))));
+await t('커밍쏜(admin)은 삭제 가능',
+  () => assertSucceeds(deleteDoc(doc(owner, 'playbook', 'p1'))));
+
+console.log('\n── 플레이북: 입력 검증 ──');
+await t('질문 빈 값 차단',
+  () => assertFails(setDoc(doc(heidi, 'playbook', 'p3'), PB({ question: '' }))));
+await t('알 수 없는 상태값 차단',
+  () => assertFails(setDoc(doc(heidi, 'playbook', 'p3'), PB({ status: '아무거나' }))));
+await t('답변 20만자 초과 차단',
+  () => assertFails(setDoc(doc(heidi, 'playbook', 'p3'), PB({ answer: 'x'.repeat(200001) }))));
+
 console.log('\n── 팀 지식 컬렉션 (서버 전용) ──');
 await t('소유자도 브라우저에서 guidelines 읽기 차단',
   () => assertFails(getDoc(doc(owner, 'guidelines', 'g1'))));
-await t('소유자도 브라우저에서 playbook 쓰기 차단',
-  () => assertFails(setDoc(doc(owner, 'playbook', 'p1'), { question: 'x' })));
 await t('cases 읽기 차단',
   () => assertFails(getDoc(doc(owner, 'cases', 'c1'))));
 

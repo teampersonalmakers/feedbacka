@@ -256,6 +256,8 @@ function gateFatal(detail) {
 
   let PMFire = null;
 
+  const cut = (v, n) => (typeof v === 'string' ? v.slice(0, n) : v);
+
   function buildApi(user, director, profile) {
     const uid = user.uid;
     const convCol = () => F.collection(db, 'users', uid, 'convs');
@@ -263,7 +265,6 @@ function gateFatal(detail) {
     const turnCol = (id) => F.collection(db, 'users', uid, 'convs', String(id), 'turns');
     const recCol = () => F.collection(db, 'users', uid, 'records');
     const turnId = (seq) => 't' + String(seq).padStart(6, '0');
-    const cut = (v, n) => (typeof v === 'string' ? v.slice(0, n) : v);
 
     return {
       uid,
@@ -317,6 +318,50 @@ function gateFatal(detail) {
         this.profile.nickname = n;
         window.dispatchEvent(new CustomEvent('pmfire:profile', { detail: { nickname: n } }));
         return n;
+      },
+
+      // ── 플레이북 ────────────────────────────────────────────────────────
+      // 디렉터가 초안을 쓰고, 커밍쏜(admin)이 승인한다.
+      // 승인된 Q&A 만 api/feedback.js 가 시스템 프롬프트에 넣는다.
+      // 여기서 막아도 진짜 강제는 firestore.rules 가 한다.
+      async listPlaybook(max = 300) {
+        const snap = await F.getDocs(F.query(F.collection(db, 'playbook'), F.limit(max)));
+        return snap.docs
+          .map((d) => Object.assign({ id: d.id }, d.data()))
+          .sort((a, b) => (b.updatedAtMs || b.createdAt || 0) - (a.updatedAtMs || a.createdAt || 0));
+      },
+
+      async savePlaybook(id, data) {
+        const now = Date.now();
+        const payload = {
+          question: cut(String(data.question || '').trim(), 500),
+          originalQuestion: cut(data.originalQuestion || '', 60000),
+          answer: cut(data.answer || '', 200000),
+          status: data.status || '답변작성',
+          category: cut(data.category || '', 100),
+          student: cut(data.student || '', 100),
+          director: cut(data.director || this.profile.nickname || '', 50),
+          type: data.type || '수동등록',
+          updatedAtMs: now,
+          updatedBy: cut(this.profile.nickname || '', 50),
+          updatedAt: F.serverTimestamp(),
+        };
+        if (!payload.question) throw new Error('질문을 입력해주세요');
+        if (data.status === '승인') {
+          payload.approvedBy = cut(this.profile.nickname || '', 50);
+          payload.approvedAtMs = now;
+        }
+        if (id) {
+          await F.setDoc(F.doc(db, 'playbook', id), payload, { merge: true });
+          return id;
+        }
+        const ref = F.doc(F.collection(db, 'playbook'));
+        await F.setDoc(ref, Object.assign({ createdAt: now, source: 'app' }, payload));
+        return ref.id;
+      },
+
+      async deletePlaybook(id) {
+        await F.deleteDoc(F.doc(db, 'playbook', id));
       },
 
       // ── 대화 ────────────────────────────────────────────────────────────
@@ -507,11 +552,25 @@ function gateFatal(detail) {
     if (document.getElementById('pmauthBadge')) return;
     const host = document.querySelector('header, .top-bar, .header');
     if (!host) return;
+
+    // 플레이북 링크 — 플레이북 페이지 자신에서는 띄우지 않는다.
+    if (!/\/playbook(\.html)?$/.test(location.pathname)) {
+      const nav = document.createElement('a');
+      nav.id = 'pmNavPlaybook';
+      nav.href = '/playbook.html';
+      nav.textContent = '📒 플레이북';
+      nav.style.cssText =
+        'margin-left:auto;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);' +
+        'color:inherit;opacity:.85;border-radius:20px;padding:5px 12px;font-size:11.5px;font-weight:700;' +
+        'cursor:pointer;font-family:inherit;white-space:nowrap;text-decoration:none;margin-right:8px;';
+      host.appendChild(nav);
+    }
     const b = document.createElement('button');
     b.id = 'pmauthBadge';
     b.type = 'button';
     b.style.cssText =
-      'margin-left:auto;background:rgba(200,98,42,.14);border:1px solid rgba(200,98,42,.35);' +
+      (document.getElementById('pmNavPlaybook') ? '' : 'margin-left:auto;') +
+      'background:rgba(200,98,42,.14);border:1px solid rgba(200,98,42,.35);' +
       'color:#c8622a;border-radius:20px;padding:5px 12px;font-size:11.5px;font-weight:700;' +
       'cursor:pointer;font-family:inherit;white-space:nowrap;';
     const paint = () => { b.textContent = '👤 ' + (api.profile.nickname || '닉네임 설정'); };
