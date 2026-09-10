@@ -322,6 +322,7 @@ export function addMetrics(m) {
     timings: m.timings || {},
     usage: m.usage || {},
     sources: m.sources || {},
+    eval: !!m.eval,   // 자동 평가(api/eval.js)에서 나온 요청 — 통계에서 걸러내기 위해
   });
 }
 
