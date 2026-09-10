@@ -18,7 +18,6 @@ public/       정적 페이지
   chat.html      챗 UI
   classic.html   미션 피드백 2단 레이아웃
   creator.html   콘텐츠 기획 생성기
-  member.html    경량 페이지 (디렉터 전용)
   playbook.html  플레이북 — 디렉터가 Q&A 작성, 커밍쏜이 승인
   settings.html  설정 — AI 지침·디렉팅 사례 편집 (커밍쏜 전용)
   insight.html   설정 › 지식베이스 — 자막·녹취 원문 (커밍쏜 전용)
@@ -239,11 +238,6 @@ gcloud firestore indexes composite create --project=personalmakers-ai \
 
 로그인 후 닉네임이 없으면 설정 화면이 먼저 뜹니다. 닉네임은 헤더의 `👤` 배지를
 눌러 언제든 바꿀 수 있고, 피드백 기록에 작성자로 남습니다.
-
-> `member.html` 은 `/api/feedback` 에 `isPublic: true` 를 보냅니다. 이 플래그는
-> "지금 대화하는 상대는 멤버십 회원입니다" 라는 지시를 프롬프트에 넣습니다.
-> 디렉터 전용이 된 지금은 말투가 어긋날 수 있으니, 디렉터 톤으로 바꾸려면
-> `public/member.html` 의 `isPublic: true` 를 빼면 됩니다.
 
 ### 소유자 부트스트랩
 
