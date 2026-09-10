@@ -40,7 +40,17 @@ main { flex:1; overflow-y:auto; }
 <style>
 .srcs { display:flex; flex-wrap:wrap; gap:6px; margin-top:12px; }
 .src { font-size:10.5px; background:var(--bg); border:1px solid var(--border); border-radius:5px; padding:3px 8px; color:var(--ink-soft); max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.acts { display:flex; gap:8px; margin-top:12px; padding-top:12px; border-top:1px solid var(--border); }
+.acts { display:flex; gap:8px; margin-top:12px; padding-top:12px; border-top:1px solid var(--border); flex-wrap:wrap; }
+.evid { margin-top:10px; border:1px solid var(--border); border-radius:10px; background:var(--bg); padding:10px 12px; font-size:12px; color:var(--ink-mid); }
+.evid h5 { margin:8px 0 5px; font-size:11px; color:var(--ink-soft); letter-spacing:.3px; text-transform:uppercase; }
+.evid h5:first-child { margin-top:0; }
+.evid details { margin:3px 0; }
+.evid summary { cursor:pointer; font-weight:600; color:var(--ink); list-style:none; }
+.evid summary::before { content:'▸ '; color:var(--accent); }
+.evid details[open] summary::before { content:'▾ '; }
+.evid .snip { white-space:pre-wrap; margin:4px 0 6px 14px; line-height:1.6; color:var(--ink-mid); font-size:11.5px; border-left:2px solid var(--border); padding-left:8px; }
+.evid .meta { font-weight:400; color:var(--ink-soft); font-size:11px; margin-left:4px; }
+.evid .none { color:var(--ink-soft); }
 .act { border:1px solid var(--border); background:#fff; border-radius:8px; padding:5px 12px; font-size:12px; font-weight:600; color:var(--ink-mid); cursor:pointer; font-family:var(--font); white-space:nowrap; transition:all .15s; }
 .act:hover { background:var(--accent-soft); border-color:var(--accent); color:var(--accent); }
 .act:disabled { opacity:.55; cursor:default; }
@@ -233,7 +243,7 @@ function renderAll() {
   }
   turns.forEach(function(t) {
     w.appendChild(userBubble(t.q, t.att, t.attUrl, t.attName));
-    if (t.a != null) { var b = aiBubble(); b.text.innerHTML = md(t.a); addActions(b, t.q, t.a, t.sources); }
+    if (t.a != null) { var b = aiBubble(); b.text.innerHTML = md(t.a); addActions(b, t.q, t.a, t.sources, t.evidence); }
   });
   scrollBottom();
 }
@@ -287,9 +297,41 @@ function addSources(b, sources) {
   });
   b.bubble.appendChild(sd);
 }
-function addActions(b, q, a, sources) {
+// 답변 근거 — 서버가 무엇을 보고 답했는지 (검색 자막·디렉팅 사례·플레이북·수강생 기억)
+function buildEvidence(ev) {
+  var d = document.createElement('div'); d.className = 'evid'; d.hidden = true;
+  function esc2(x) { var t = document.createElement('div'); t.textContent = x == null ? '' : x; return t.innerHTML; }
+  var h = '';
+  var srcs = (ev && ev.sources) || [];
+  h += '<h5>참고한 자막·자료 ' + srcs.length + '건</h5>';
+  if (!srcs.length) h += '<div class="none">검색된 자료 없음</div>';
+  srcs.forEach(function(x) {
+    h += '<details><summary>' + esc2(x.docName) + '<span class="meta">' + esc2(x.docType || '') +
+         (x.score ? ' · 유사도 ' + Math.round(x.score * 100) + '%' : '') + '</span></summary>' +
+         '<div class="snip">' + esc2(x.text || '') + '</div></details>';
+  });
+  var cs = (ev && ev.cases) || [];
+  h += '<h5>커밍쏜 디렉팅 사례 ' + cs.length + '건</h5>';
+  if (!cs.length) h += '<div class="none">이 질문과 맞는 사례 없음</div>';
+  cs.forEach(function(c) {
+    h += '<details><summary>' + esc2(c.summary) + (c.cohort ? '<span class="meta">' + esc2(c.cohort) + '</span>' : '') + '</summary>' +
+         '<div class="snip">' + esc2(c.text || '') + '</div></details>';
+  });
+  h += '<h5>그 외</h5><div>승인된 플레이북 Q&amp;A ' + ((ev && ev.playbook) || 0) + '건 반영' +
+       ' · 수강생 기억 ' + (ev && ev.studentMemory ? '사용함' : '없음') + '</div>';
+  d.innerHTML = h;
+  return d;
+}
+function addActions(b, q, a, sources, evidence) {
   addSources(b, sources);
   var ad = document.createElement('div'); ad.className = 'acts';
+  if (evidence) {
+    var ev = buildEvidence(evidence);
+    var evBtn = document.createElement('button'); evBtn.className = 'act'; evBtn.textContent = '🔍 근거 보기';
+    evBtn.onclick = function() { ev.hidden = !ev.hidden; evBtn.textContent = ev.hidden ? '🔍 근거 보기' : '🔍 근거 닫기'; };
+    ad.appendChild(evBtn);
+    b.bubble._ev = ev;   // 버튼 줄(acts) 뒤에 붙인다 — 아래 마지막 줄
+  }
   var learn = document.createElement('button'); learn.className = 'act'; learn.textContent = '🧠 AI 학습시키기';
   learn.onclick = async function() {
     if (learn.dataset.done) return;
@@ -320,6 +362,7 @@ function addActions(b, q, a, sources) {
   ad.appendChild(up); ad.appendChild(dn);
 
   b.bubble.appendChild(ad);
+  if (b.bubble._ev) b.bubble.appendChild(b.bubble._ev);
 }
 function saveChat() { try { localStorage.setItem('pm_chat_v1', JSON.stringify(turns.slice(-30))); } catch(e) {} }
 function loadChat() { try { turns = JSON.parse(localStorage.getItem('pm_chat_v1') || '[]'); } catch(e) { turns = []; } }
@@ -354,8 +397,9 @@ async function send() {
     });
   }
 
-  var turn = { q: text || '워크시트 첨부', att: hadAtt, attUrl: (attMeta && attMeta.url) || '', attName: (attMeta && attMeta.name) || '', a: null, sources: [] };
+  var turn = { q: text || '워크시트 첨부', att: hadAtt, attUrl: (attMeta && attMeta.url) || '', attName: (attMeta && attMeta.name) || '', a: null, sources: [], evidence: null };
   turns.push(turn);
+  saveChat();   // 질문을 먼저 저장 — 답변 도중 탭이 닫혀도 질문은 남는다
   document.getElementById('msgs').appendChild(userBubble(turn.q, hadAtt, turn.attUrl, turn.attName));
   var b = aiBubble();
   b.text.innerHTML = '<span class="cursor"></span>';
@@ -371,8 +415,8 @@ async function send() {
     if (ct.indexOf('text/event-stream') < 0) {
       var d = await r.json();
       if (d.error) throw new Error(d.error);
-      turn.a = d.feedback || ''; turn.sources = d.sources || [];
-      b.text.innerHTML = md(turn.a); addActions(b, question, turn.a, turn.sources);
+      turn.a = d.feedback || ''; turn.sources = d.sources || []; turn.evidence = d.evidence || null;
+      b.text.innerHTML = md(turn.a); addActions(b, question, turn.a, turn.sources, turn.evidence);
     } else {
       var reader = r.body.getReader(); var dec = new TextDecoder();
       var buf = '', acc = '';
@@ -391,14 +435,14 @@ async function send() {
           }
           if (!data) continue;
           var o; try { o = JSON.parse(data); } catch(e) { continue; }
-          if (ev === 'meta') turn.sources = o.sources || [];
+          if (ev === 'meta') { turn.sources = o.sources || []; turn.evidence = o.evidence || null; }
           else if (ev === 'delta' && o.t) { acc += o.t; b.text.innerHTML = md(acc) + '<span class="cursor"></span>'; scrollBottom(); }
           else if (ev === 'error') throw new Error(o.message || '스트리밍 오류');
         }
       }
       turn.a = acc;
       b.text.innerHTML = md(acc);
-      addActions(b, question, acc, turn.sources);
+      addActions(b, question, acc, turn.sources, turn.evidence);
     }
     saveChat();
   } catch(e) {
@@ -406,6 +450,7 @@ async function send() {
     b.bubble.appendChild(ed);
     b.text.innerHTML = b.text.innerHTML.replace('<span class="cursor"></span>', '');
     turns.pop();
+    saveChat();
   }
   busy = false;
   document.getElementById('sendBtn').disabled = false;
@@ -505,6 +550,14 @@ function openConv(id) {
   var c = convs.find(function(x) { return x.id === id; });
   if (!c) return;
   activeId = id; turns = c.turns || [];
+  // 답변을 못 받은 질문(전송 중 닫힘)은 대화에서 빼고 입력창에 되돌려 놓는다.
+  var pending = turns.filter(function(t) { return t.a == null; });
+  if (pending.length) {
+    turns = c.turns = turns.filter(function(t) { return t.a != null; });
+    var last = pending[pending.length - 1], inp = document.getElementById('inp');
+    if (inp && !inp.value.trim() && last.q && last.q !== '워크시트 첨부') { inp.value = last.q; if (typeof autoGrow === 'function') autoGrow(); }
+    persistConvs();
+  }
   document.getElementById('stuName').value = c.student || '';
   renderAll(); renderSide(); document.body.classList.remove('side-open');
 }

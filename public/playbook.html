@@ -55,6 +55,8 @@ body { background: var(--bg); color: var(--ink); font-family: var(--font); min-h
 .search { border: 1px solid var(--border); border-radius: 9px; padding: 8px 12px;
   font-family: var(--font); font-size: 12.5px; width: 200px; background: var(--paper); color: var(--ink); }
 .search:focus { outline: none; border-color: var(--accent); }
+.mine { display: flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--ink-mid); white-space: nowrap; cursor: pointer; }
+.mine input { accent-color: var(--accent); }
 .btn { border: 0; border-radius: 9px; padding: 9px 15px; font-family: var(--font);
   font-size: 12.5px; font-weight: 700; cursor: pointer; }
 .btn-primary { background: var(--accent); color: #fff; }
@@ -152,6 +154,8 @@ body { background: var(--bg); color: var(--ink); font-family: var(--font); min-h
   <div class="toolbar">
     <div class="tabs" id="tabs"></div>
     <div class="grow"></div>
+    <select class="search" id="catFilter" title="카테고리"><option value="">카테고리 전체</option></select>
+    <label class="mine"><input type="checkbox" id="mineOnly"> 내 항목만</label>
     <input class="search" id="search" placeholder="질문·답변·수강생 검색" />
     <button class="btn btn-primary" id="newBtn">＋ 새 질문 등록</button>
   </div>
@@ -176,6 +180,8 @@ var CATEGORIES = ['유튜브 브랜딩(로드맵)', '채널운영(콘텐츠관�
 var rows = [];        // 플레이북 전체
 var filter = '전체';
 var keyword = '';
+var catFilter = '';
+var mineOnly = false;
 var editing = null;   // 편집 중인 행 (null 이면 새 항목)
 
 function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
@@ -184,8 +190,11 @@ function isAdmin() { return !!(window.PMFire && window.PMFire.isAdmin()); }
 // ─── 목록 ───────────────────────────────────────────────────────────────────
 function visible() {
   var kw = keyword.trim().toLowerCase();
+  var me = (window.PMFire && window.PMFire.profile && window.PMFire.profile.nickname) || '';
   return rows.filter(function(r) {
     if (filter !== '전체' && (r.status || '') !== filter) return false;
+    if (catFilter && (r.category || '') !== catFilter) return false;
+    if (mineOnly && (r.director || '') !== me) return false;
     if (!kw) return true;
     return ((r.question || '') + ' ' + (r.originalQuestion || '') + ' ' +
             (r.answer || '') + ' ' + (r.student || '') + ' ' + (r.director || '')
@@ -388,6 +397,12 @@ document.getElementById('newBtn').onclick = function() {
 document.getElementById('search').addEventListener('input', function(e) {
   keyword = e.target.value; renderList();
 });
+(function() {
+  var sel = document.getElementById('catFilter');
+  CATEGORIES.forEach(function(c) { var o = document.createElement('option'); o.value = c; o.textContent = c; sel.appendChild(o); });
+  sel.addEventListener('change', function() { catFilter = sel.value; renderList(); });
+  document.getElementById('mineOnly').addEventListener('change', function(e) { mineOnly = e.target.checked; renderList(); });
+})();
 
 window.addEventListener('pmfire:ready', reload);
 if (window.PMFire) reload();

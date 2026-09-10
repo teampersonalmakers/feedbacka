@@ -504,6 +504,15 @@ ${outputList.includes('썸네일 아이디어') ? `## 🖼 썸네일 아이디�
   M.sources.cases = relevantCases.length;
   M.sources.playbook = playbook.length;
 
+  // 답변 근거 — 디렉터 화면에 "무엇을 보고 답했는지" 보여주기 위한 목록.
+  // 본문은 짧게 잘라 보낸다(카드에서 펼쳐 볼 정도).
+  const evidence = {
+    sources: hits.map((h) => ({ docName: h.docName, docType: h.docType || '', score: Math.round((h.score || 0) * 100) / 100, text: String(h.text || '').slice(0, 600) })),
+    cases: relevantCases.map((c) => ({ summary: c.summary || '', cohort: c.cohort || '', text: String(c.body || '').slice(0, 600) })),
+    playbook: playbook.length,
+    studentMemory: M.sources.studentMemory,
+  };
+
   const corePhilosophy = (g.corePhilosophy || [
     '유튜브는 SNS가 아니라 비즈니스다. 채널은 브랜드고, 콘텐츠는 상품이다.',
     '나만의 라이프스타일을 콘텐츠에 전달하고, 이에 공감하는 사람들을 모아야 한다.',
@@ -591,7 +600,7 @@ ${isPublic
         'Cache-Control': 'no-cache, no-transform',
         'Connection': 'keep-alive',
       });
-      res.write('event: meta\ndata: ' + JSON.stringify({ sources: hits }) + '\n\n');
+      res.write('event: meta\ndata: ' + JSON.stringify({ sources: hits, evidence }) + '\n\n');
       mark('claudeConnect');
       const reader = upstream.body.getReader();
       const decoder = new TextDecoder();
@@ -648,7 +657,7 @@ ${isPublic
     M.usage = { input: u.input_tokens || 0, output: u.output_tokens || 0,
                 cacheRead: u.cache_read_input_tokens || 0, cacheWrite: u.cache_creation_input_tokens || 0 };
     logMetrics({ ok: true, answerChars: text.length });
-    return res.status(200).json({ feedback: text, sources: hits });
+    return res.status(200).json({ feedback: text, sources: hits, evidence });
   } catch(e) {
     logMetrics({ ok: false, error: e.message });
     return res.status(500).json({ error: e.message });

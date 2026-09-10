@@ -74,6 +74,19 @@ function injectStyles() {
 .pmauth-ok { color:#8a857e; }
 .pmauth-who { color:#6f6a63; font-size:11px; margin-top:14px; word-break:break-all; }
 
+.pmmenu { position:absolute; z-index:99997; min-width:220px; background:#262320; border:1px solid #3a3530;
+  border-radius:12px; padding:6px; box-shadow:0 18px 50px rgba(0,0,0,.4);
+  font-family:'Pretendard','Apple SD Gothic Neo',system-ui,sans-serif; }
+.pmmenu .who { padding:8px 10px 10px; border-bottom:1px solid #3a3530; margin-bottom:4px; }
+.pmmenu .who b { display:block; color:#f0ede8; font-size:13px; }
+.pmmenu .who span { display:block; color:#8a857e; font-size:11px; margin-top:2px; word-break:break-all; }
+.pmmenu button, .pmmenu a { display:flex; align-items:center; gap:8px; width:100%; text-align:left; border:0; background:transparent;
+  color:#e6e1d8; font-size:13px; padding:9px 10px; border-radius:8px; cursor:pointer; font-family:inherit; text-decoration:none; }
+.pmmenu button:hover, .pmmenu a:hover { background:rgba(255,255,255,.07); }
+.pmmenu .danger { color:#ff9a8a; }
+.pmadmin input.pmnick { width:100%; box-sizing:border-box; background:#1c1a17; border:1px solid #3a3530; border-radius:10px;
+  padding:12px 14px; color:#f5f0e8; font-size:15px; font-family:inherit; outline:none; }
+.pmadmin input.pmnick:focus { border-color:#c8622a; }
 .pmadmin-back { position:fixed; inset:0; z-index:99998; background:rgba(20,18,16,.62);
   display:flex; align-items:center; justify-content:center; padding:20px; }
 .pmadmin { background:#262320; border:1px solid #3a3530; border-radius:16px;
@@ -427,6 +440,7 @@ function gateFatal(detail) {
             q: v.q || '', a: v.a == null ? null : v.a,
             att: !!v.att, attUrl: v.attUrl || '', attName: v.attName || '',
             sources: v.sources || [],
+            evidence: v.evidence || null,
           };
         });
       },
@@ -452,6 +466,17 @@ function gateFatal(detail) {
           sources: (turn.sources || []).slice(0, 20).map((s) => ({
             docName: cut((s && (s.docName || s.name)) || String(s), 200),
           })),
+          // 답변 근거(🔍 근거 보기). 다른 기기에서 열어도 보이도록 짧게 보관한다.
+          evidence: turn.evidence ? {
+            sources: (turn.evidence.sources || []).slice(0, 8).map((x) => ({
+              docName: cut(x.docName || '', 200), docType: cut(x.docType || '', 40), score: Number(x.score) || 0, text: cut(x.text || '', 400),
+            })),
+            cases: (turn.evidence.cases || []).slice(0, 4).map((c) => ({
+              summary: cut(c.summary || '', 300), cohort: cut(c.cohort || '', 40), text: cut(c.text || '', 400),
+            })),
+            playbook: Number(turn.evidence.playbook) || 0,
+            studentMemory: !!turn.evidence.studentMemory,
+          } : null,
           updatedAt: F.serverTimestamp(),
         }, { merge: true });
       },
@@ -519,6 +544,35 @@ function gateFatal(detail) {
   }
 
   // 디렉터 관리 모달 (admin 전용)
+  function openNickname(api) {
+    const back = document.createElement('div');
+    back.className = 'pmadmin-back';
+    back.innerHTML = `
+      <div class="pmadmin">
+        <h3>닉네임 변경</h3>
+        <p class="sub">플레이북과 상담 기록에 이 이름으로 남습니다. 최대 20자.</p>
+        <input class="pmnick" id="pmnickInput" maxlength="20" placeholder="닉네임" autocomplete="off">
+        <button class="pmauth-btn pmauth-google" id="pmnickSave" style="margin-top:12px">저장</button>
+        <div class="pmauth-msg pmauth-err" id="pmnickMsg"></div>
+        <button class="pmauth-btn pmauth-ghost" id="pmnickClose">닫기</button>
+      </div>`;
+    document.body.appendChild(back);
+    const input = back.querySelector('#pmnickInput');
+    const msg = back.querySelector('#pmnickMsg');
+    input.value = api.profile.nickname || '';
+    const close = () => back.remove();
+    back.querySelector('#pmnickClose').onclick = close;
+    back.onclick = (e) => { if (e.target === back) close(); };
+    const save = async () => {
+      const v = input.value.trim();
+      if (!v) { msg.textContent = '닉네임을 입력해주세요'; return; }
+      try { await api.setNickname(v); close(); } catch (e) { msg.textContent = e.message; }
+    };
+    back.querySelector('#pmnickSave').onclick = save;
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') save(); });
+    setTimeout(() => input.focus(), 0);
+  }
+
   async function openAdmin(api) {
     const back = document.createElement('div');
     back.className = 'pmadmin-back';
@@ -632,25 +686,37 @@ function gateFatal(detail) {
     paint();
     window.addEventListener('pmfire:profile', paint);
 
-    b.onclick = async () => {
-      const opts = ['1. 닉네임 변경'];
-      if (api.isAdmin()) opts.push('2. 디렉터 관리');
-      opts.push((api.isAdmin() ? '3' : '2') + '. 로그아웃');
-      const pick = prompt(
-        api.profile.nickname + ' (' + api.profile.email + ')\n\n' + opts.join('\n') + '\n\n번호를 입력하세요',
-        '1'
-      );
-      if (pick === null) return;
-      const n = pick.trim();
-      if (n === '1') {
-        const next = prompt('닉네임을 입력하세요 (최대 20자)', api.profile.nickname || '');
-        if (next === null || !next.trim()) return;
-        try { await api.setNickname(next); } catch (e) { alert(e.message); }
-      } else if (api.isAdmin() && n === '2') {
-        openAdmin(api);
-      } else if ((api.isAdmin() && n === '3') || (!api.isAdmin() && n === '2')) {
-        if (confirm('로그아웃할까요?')) api.signOut();
-      }
+    // 드롭다운 메뉴. 예전엔 prompt() 에 번호를 치게 했다.
+    let menu = null;
+    const closeMenu = () => { if (menu) { menu.remove(); menu = null; } };
+    b.onclick = (e) => {
+      e.stopPropagation();
+      if (menu) return closeMenu();
+      menu = document.createElement('div');
+      menu.className = 'pmmenu';
+      const item = (label, fn, cls) => {
+        const el = document.createElement('button'); el.type = 'button';
+        el.textContent = label; if (cls) el.className = cls;
+        el.onclick = () => { closeMenu(); fn(); };
+        menu.appendChild(el);
+      };
+      const who = document.createElement('div'); who.className = 'who';
+      who.innerHTML = '<b></b><span></span>';
+      who.querySelector('b').textContent = api.profile.nickname || '닉네임 미설정';
+      who.querySelector('span').textContent = api.profile.email + (api.isAdmin() ? ' · 관리자' : '');
+      menu.appendChild(who);
+      item('✏️ 닉네임 변경', () => openNickname(api));
+      if (api.isAdmin()) item('👥 디렉터 관리', () => openAdmin(api));
+      if (api.isOwner() && !/\/insight(\.html)?$/.test(location.pathname)) item('🔒 내부 인사이트', () => { location.href = '/insight.html'; });
+      if (!/\/playbook(\.html)?$/.test(location.pathname)) item('📒 플레이북', () => { location.href = '/playbook.html'; });
+      item('🚪 로그아웃', () => { if (confirm('로그아웃할까요?')) api.signOut(); }, 'danger');
+      document.body.appendChild(menu);
+      const r = b.getBoundingClientRect();
+      menu.style.top = (window.scrollY + r.bottom + 8) + 'px';
+      menu.style.right = Math.max(8, document.documentElement.clientWidth - r.right - window.scrollX) + 'px';
+      const onDoc = (ev) => { if (menu && !menu.contains(ev.target)) { closeMenu(); document.removeEventListener('click', onDoc); } };
+      setTimeout(() => document.addEventListener('click', onDoc), 0);
+      document.addEventListener('keydown', function esc(ev) { if (ev.key === 'Escape') { closeMenu(); document.removeEventListener('keydown', esc); } });
     };
     host.appendChild(b);
   }
