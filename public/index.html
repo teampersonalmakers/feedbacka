@@ -53,6 +53,16 @@ main { flex:1; overflow-y:auto; }
 .evid .none { color:var(--ink-soft); }
 .act { border:1px solid var(--border); background:#fff; border-radius:8px; padding:5px 12px; font-size:12px; font-weight:600; color:var(--ink-mid); cursor:pointer; font-family:var(--font); white-space:nowrap; transition:all .15s; }
 .act:hover { background:var(--accent-soft); border-color:var(--accent); color:var(--accent); }
+/* 마우스를 올리면 작은 창으로 무엇을 하는 버튼인지 알려준다 (헷갈림 방지) */
+.act[data-tip] { position:relative; }
+.act[data-tip]::after { content:attr(data-tip); position:absolute; left:0; bottom:calc(100% + 8px); z-index:20;
+  background:#1a1d23; color:#fff; font-size:12px; font-weight:500; line-height:1.5; padding:8px 11px; border-radius:8px;
+  white-space:nowrap; box-shadow:0 8px 24px rgba(16,24,40,.18); opacity:0; transform:translateY(4px); pointer-events:none;
+  transition:opacity .12s, transform .12s; }
+.act[data-tip]::before { content:''; position:absolute; left:14px; bottom:calc(100% + 3px); border:5px solid transparent; border-top-color:#1a1d23;
+  opacity:0; pointer-events:none; transition:opacity .12s; }
+.act[data-tip]:hover::after, .act[data-tip]:hover::before { opacity:1; transform:none; }
+.act:disabled[data-tip]::after, .act:disabled[data-tip]::before { display:none; }
 .act:disabled { opacity:.55; cursor:default; }
 footer { background:var(--panel); border-top:1px solid var(--border); padding:10px 16px 14px; }
 .composer { max-width:820px; margin:0 auto; }
@@ -101,7 +111,6 @@ textarea#inp:focus { outline:none; border-color:var(--accent); }
     <div class="hsub">무엇이든 물어보세요 · 커밍쏜의 지식과 기준으로 답합니다</div>
   </div>
   <div class="hspace"></div>
-  <button class="hbtn" onclick="location.href='classic.html'">기존 화면</button>
   <button class="hbtn" onclick="newChat()">＋ 새 대화</button>
 </header>
 
@@ -334,14 +343,17 @@ function addActions(b, q, a, sources, evidence) {
   // 승인 전에는 AI 에 들어가지 않으므로 잘못 눌러도 손해가 없다.
   var cp = document.createElement('button'); cp.className = 'act'; cp.textContent = '복사';
   cp.onclick = function() { navigator.clipboard.writeText(a); cp.textContent = '✓ 복사됨'; setTimeout(function() { cp.textContent = '복사'; }, 1500); };
-  var up = document.createElement('button'); up.className = 'act'; up.textContent = '👍 좋아요 · 플레이북에';
+  var up = document.createElement('button'); up.className = 'act'; up.textContent = '👍 좋아요';
+  up.dataset.tip = '플레이북에 좋았던 답변으로 남기시겠습니까?';
   var dn = document.createElement('button'); dn.className = 'act'; dn.textContent = '👎 아쉬워요';
+  dn.dataset.tip = '플레이북에 아쉬웠던 답변으로 남기시겠습니까?';
+  cp.dataset.tip = '답변 텍스트를 복사합니다';
   var student = function() { return document.getElementById('stuName').value.trim(); };
   var director = function() { return (window.PMFire && window.PMFire.profile && window.PMFire.profile.nickname) || ''; };
   function lock(btn, label) { up.dataset.done = dn.dataset.done = '1'; up.disabled = dn.disabled = true; btn.textContent = label; }
   up.onclick = async function() {
     if (up.dataset.done) return;
-    var note = prompt('어떤 점이 좋았나요? (선택 · 비워도 됩니다)');
+    var note = prompt('플레이북에 좋았던 답변으로 남깁니다.\n어떤 점이 좋았나요? (선택 · 비워도 됩니다)');
     if (note === null) return;
     lock(up, '등록 중…');
     try {
@@ -350,11 +362,11 @@ function addActions(b, q, a, sources, evidence) {
       var d = await r.json();
       if (d.error) throw new Error(d.error);
       up.textContent = '👍 플레이북 승인 후보로 올렸어요';
-    } catch(e) { up.dataset.done = dn.dataset.done = ''; up.disabled = dn.disabled = false; up.textContent = '👍 좋아요 · 플레이북에'; alert('등록 실패: ' + e.message); }
+    } catch(e) { up.dataset.done = dn.dataset.done = ''; up.disabled = dn.disabled = false; up.textContent = '👍 좋아요'; alert('등록 실패: ' + e.message); }
   };
   dn.onclick = function() {
     if (dn.dataset.done) return;
-    var comment = prompt('어떤 점이 아쉬웠나요? (선택 · 취소해도 기록됩니다)') || '';
+    var comment = prompt('플레이북에 아쉬웠던 답변으로 남깁니다.\n어떤 점이 아쉬웠나요? (선택 · 취소해도 기록됩니다)') || '';
     lock(dn, '등록 중…');
     fetch('/api/rate', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ question: q, answer: a, rating: 'down', student: student(), comment: comment, director: director() }) })

@@ -14,10 +14,8 @@ api/          Vercel 서버리스 함수
   history.js     대화 자동 기록
   playbook.js    👍 좋아요 → 플레이북 승인 후보 등록
 public/       정적 페이지
-  index.html     메인 챗 (chat.html 과 동일 내용)
-  chat.html      챗 UI
-  classic.html   미션 피드백 2단 레이아웃
-  creator.html   콘텐츠 기획 생성기
+  index.html     코치 화면 (디렉터 본체: 대화·수강생 기억·워크시트 사진·👍👎)
+  creator.html   콘텐츠 기획 생성기 (별도 도구)
   playbook.html  플레이북 — 디렉터가 Q&A 작성, 커밍쏜이 승인
   settings.html  설정 — AI 지침·디렉팅 사례 편집 (커밍쏜 전용)
   insight.html   설정 › 지식베이스 — 자막·녹취 원문 (커밍쏜 전용)
@@ -231,7 +229,7 @@ gcloud firestore indexes composite create --project=personalmakers-ai \
 
 비밀번호 게이트(`0630` / `0730`)는 **제거**했습니다. 소스만 보면 뚫리는 구조였습니다.
 
-이제 **모든 페이지**(`index` / `chat` / `classic` / `creator` / `playbook` / `settings` / `insight`)가
+이제 **모든 페이지**(`index` / `creator` / `playbook` / `settings` / `insight`)가
 구글 로그인을 거치고, `directors/{이메일}` 문서가 있는 계정만 통과합니다.
 화이트리스트는 보안 규칙에서 클라이언트 쓰기가 **전면 차단**돼 있어 아무나
 가입할 수 없습니다.
@@ -297,7 +295,7 @@ Storage 를 활성화하지 않아도 앱은 정상 동작합니다.
 - **OCR 은 그대로 작동합니다.** 이미지를 base64 로 `/api/ocr` 에 직접 보내므로
   Storage 와 무관합니다.
 - 워크시트 **원본 보관 / 다시보기 링크**만 생기지 않습니다.
-- 업로드 실패는 `public/chat.html`, `public/classic.html` 양쪽에서 `.catch` 로
+- 업로드 실패는 `public/index.html` 에서 `.catch` 로
   무시하고 진행합니다. 콘솔에 경고만 남습니다.
 
 나중에 Storage 를 켜면 코드 수정 없이 바로 동작합니다 — `storage.rules` 만
