@@ -37,7 +37,7 @@ let _initTried = false;
 // 서비스 계정: 원문 JSON 과 base64 를 모두 받는다.
 // 붙여넣는 과정에서 개행이 섞이거나 앞뒤가 잘리는 일이 잦아서, 가능한 해석을
 // 순서대로 다 시도한 뒤 실패하면 값이 아니라 "형태"만 로그로 남긴다.
-function readServiceAccount() {
+export function readServiceAccount() {
   const raw = (process.env.FIREBASE_SERVICE_ACCOUNT || '').trim();
   if (!raw) return null;
 

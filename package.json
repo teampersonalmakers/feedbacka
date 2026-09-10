@@ -15,7 +15,8 @@
     "deploy:rules": "node scripts/deploy-rules.mjs"
   },
   "dependencies": {
-    "firebase-admin": "^14.3.0"
+    "firebase-admin": "^14.3.0",
+    "jose": "^6.2.12"
   },
   "engines": {
     "node": ">=20"
