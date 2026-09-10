@@ -134,6 +134,7 @@ textarea#inp:focus { outline:none; border-color:var(--accent); }
     </div>
   </div>
 </footer>
+<script src="/img-resize.js"></script>
 <script type="module" src="/firebase.js"></script>
 <script>
 // ─── 접근 통제 ───────────────────────────────────────────────────────────────
@@ -180,11 +181,15 @@ function scrollBottom() { var m = document.getElementById('main'); m.scrollTop =
 function onFile(input) {
   var f = input.files[0];
   if (!f) return;
-  var reader = new FileReader();
-  reader.onload = async function() {
-    var b64 = String(reader.result).split(',')[1];
+  (async function() {
     document.getElementById('attBtn').classList.add('has');
     document.getElementById('attLabel').style.display = 'inline-flex';
+    document.getElementById('attName').textContent = '🖼 ' + f.name + ' 준비 중…';
+    // Vercel 본문 한도(4.5MB) 때문에 큰 사진은 줄여서 보낸다. 글자 인식엔 영향 없음.
+    var shrunk;
+    try { shrunk = await window.pmShrinkImage(f); }
+    catch (e) { document.getElementById('attName').textContent = '이미지를 읽을 수 없어요'; return; }
+    var b64 = shrunk.base64, mediaType = shrunk.mediaType;
     document.getElementById('attName').textContent = '🖼 ' + f.name + ' 인식 중…';
 
     // 원본 캡처본은 Storage 에 보관 — OCR 과 동시에 진행해서 체감 속도를 유지한다.
@@ -195,7 +200,7 @@ function onFile(input) {
       : Promise.resolve(null);
 
     try {
-      var r = await fetch('/api/ocr', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: b64, mediaType: f.type }) });
+      var r = await fetch('/api/ocr', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: b64, mediaType: mediaType }) });
       var d = await r.json();
       if (d.error) throw new Error(d.error);
       ocrText = d.text || '';
@@ -207,8 +212,7 @@ function onFile(input) {
 
     var up = await uploading;
     if (up) attMeta = { url: up.url, name: f.name };
-  };
-  reader.readAsDataURL(f);
+  })();
 }
 function clearAtt() {
   ocrText = '';

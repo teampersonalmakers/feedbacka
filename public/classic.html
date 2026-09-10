@@ -558,6 +558,7 @@ textarea.txa { resize: vertical; line-height: 1.7; }
 </div>
 
 
+<script src="/img-resize.js"></script>
 <script type="module" src="/firebase.js"></script>
 <script>
 // ─── 접근 통제 ───────────────────────────────────────────────────────────────
@@ -1036,11 +1037,11 @@ function escHtml(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = function(e) {
-      const dataUrl = e.target.result;
-      const parts = dataUrl.split(',');
-      if (parts.length !== 2 || !parts[1]) {
+    // Vercel 본문 한도(4.5MB) 때문에 큰 사진은 줄여서 보낸다. 글자 인식엔 영향 없음.
+    setImgStatus('🖼 이미지 준비 중…', 'extracting');
+    window.pmShrinkImage(file).then(function(shrunk) {
+      const dataUrl = shrunk.dataUrl;
+      if (!shrunk.base64) {
         setImgStatus('⚠️ 이미지 읽기에 실패했습니다. 다시 시도해주세요.', 'error');
         return;
       }
@@ -1048,7 +1049,7 @@ function escHtml(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').
       document.getElementById('imgPreview').src = dataUrl;
       document.getElementById('imgPreviewWrap').style.display = 'block';
 
-      currentImageData = { base64: parts[1], mediaType: file.type, file, url: '' };
+      currentImageData = { base64: shrunk.base64, mediaType: shrunk.mediaType, file, url: '' };
 
       // 원본 캡처본을 Storage 에 보관 — OCR 과 동시에 진행한다.
       if (window.PMFire) {
@@ -1059,8 +1060,9 @@ function escHtml(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').
       }
 
       extractTextFromImage();
-    };
-    reader.readAsDataURL(file);
+    }).catch(function() {
+      setImgStatus('⚠️ 이미지 읽기에 실패했습니다. 다시 시도해주세요.', 'error');
+    });
   }
 
   async function extractTextFromImage() {
