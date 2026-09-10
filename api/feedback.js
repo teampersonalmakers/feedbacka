@@ -530,8 +530,13 @@ ${outputList.includes('썸네일 아이디어') ? `## 🖼 썸네일 아이디�
   const feedbackOrder = (g.feedbackOrder || []).length > 0
     ? '\n\n[피드백 순서 — 답변은 이 흐름을 따른다]\n' + g.feedbackOrder.map((f, i) => `${i + 1}. ${f}`).join('\n')
     : '';
-  const categoryRules = category && g.categoryGuidelines?.[category]?.rules
-    ? `\n[${g.categoryGuidelines[category].name} 피드백 지침]\n` + g.categoryGuidelines[category].rules.map(r => `- ${r}`).join('\n')
+  // 카테고리별 지침은 전부 넣고 AI 가 질문 주제에 맞는 것을 고른다.
+  // 예전엔 사용자가 고른 카테고리 하나만 넣었는데, 질문은 주제가 섞여 오는 경우가 많고
+  // 잘못 고르면 엉뚱한 지침이 들어갔다. 매 요청 같은 내용이라 캐시 블록에 들어간다.
+  const catEntries = Object.values(g.categoryGuidelines || {}).filter((c) => c && (c.rules || []).length);
+  const categoryRules = catEntries.length
+    ? '\n\n[주제별 피드백 지침 — 질문의 주제를 스스로 판단해 해당하는 지침만 적용한다. 여러 주제가 섞였으면 해당하는 것을 모두 적용한다]\n' +
+      catEntries.map((c) => `《${c.name}》\n` + c.rules.map((r) => `- ${r}`).join('\n')).join('\n\n')
     : '';
   const doNotDo = (g.doNotDo || []).length > 0 ? '\n[절대 하지 말 것]\n' + g.doNotDo.map(d => `- ${d}`).join('\n') : '';
   const freeGuidelines = g.freeGuidelines ? `\n[추가 지침]\n${g.freeGuidelines}` : '';
@@ -560,9 +565,9 @@ ${outputList.includes('썸네일 아이디어') ? `## 🖼 썸네일 아이디�
 ${corePhilosophy}
 
 [말투와 스타일]
-${toneGuide}${feedbackOrder}${freeGuidelines}${doNotDo}${playbookStr}`;
+${toneGuide}${feedbackOrder}${freeGuidelines}${doNotDo}${categoryRules}${playbookStr}`;
 
-  let VARIABLE_SYSTEM = `${categoryRules ? categoryRules.replace(/^\n/, '') + '\n\n' : ''}당신의 과거 콘텐츠, 강의, 컨설팅 자료를 참고하여 답변하세요.
+  let VARIABLE_SYSTEM = `당신의 과거 콘텐츠, 강의, 컨설팅 자료를 참고하여 답변하세요.
 ${isPublic
   ? '지금 대화하는 상대는 멤버십 회원입니다. 1:1 코칭을 받는 것처럼 따뜻하지만 솔직하게 대화하세요.'
   : '디렉터가 수강생 미션을 검토하는 상황입니다. 커밍쏜의 관점으로 피드백 방향을 제시해주세요.'}`;
@@ -571,18 +576,16 @@ ${isPublic
     ? hits.map((h, i) => `[참고 ${i+1} — ${h.docName}]\n${h.text}`).join('\n\n---\n\n')
     : '(검색된 참고 자료 없음 — 핵심 철학을 바탕으로 답변)';
 
-  const LABELS = { channel: '채널 기획', content: '콘텐츠 기획', free: '자유 질문' };
-  const categoryLabel = LABELS[category] || '질문';
 
   let userPrompt;
   if (isPublic) {
     userPrompt = mode === 'structured'
-      ? `[${categoryLabel}] 질문입니다.\n\n${question}\n\n---\n\n[참고 자료]\n${contextStr}${casesBlock}\n\n---\n\n아래 형식으로 답변해주세요:\n\n[핵심 답변]\n(가장 중요한 포인트)\n\n[구체적으로 이렇게 해보세요]\n(실행 가능한 액션 2~3가지)\n\n[한마디]\n(철학이 담긴 한 문장으로 마무리)`
-      : `[${categoryLabel}] 질문입니다.\n\n${question}\n\n---\n\n[참고 자료]\n${contextStr}${casesBlock}\n\n---\n\n커밍쏜이 직접 대화하듯 구어체로 답변해주세요. 질문자의 상황을 먼저 이해하고, 핵심을 짚은 뒤, 다음 스텝으로 마무리. 300~500자 내외.`;
+      ? `질문입니다.\n\n${question}\n\n---\n\n[참고 자료]\n${contextStr}${casesBlock}\n\n---\n\n아래 형식으로 답변해주세요:\n\n[핵심 답변]\n(가장 중요한 포인트)\n\n[구체적으로 이렇게 해보세요]\n(실행 가능한 액션 2~3가지)\n\n[한마디]\n(철학이 담긴 한 문장으로 마무리)`
+      : `질문입니다.\n\n${question}\n\n---\n\n[참고 자료]\n${contextStr}${casesBlock}\n\n---\n\n커밍쏜이 직접 대화하듯 구어체로 답변해주세요. 질문자의 상황을 먼저 이해하고, 핵심을 짚은 뒤, 다음 스텝으로 마무리. 300~500자 내외.`;
   } else {
     userPrompt = mode === 'structured'
-      ? `${studentName || '수강생'}의 [${categoryLabel}] 미션입니다.${extraContext ? `\n\n[디렉터 메모]\n${extraContext}` : ''}\n\n[제출 내용]\n${question}\n\n---\n\n[참고 자료]\n${contextStr}${casesBlock}\n\n---\n\n[✅ 잘 잡고 있는 방향]\n(2가지, 이유 포함)\n\n[🔧 더 디깅이 필요한 부분]\n(2~3가지)\n\n[💡 다음 스텝]\n(실행 가능한 액션 2~3가지)`
-      : `${studentName || '수강생'}의 [${categoryLabel}] 미션입니다.${extraContext ? `\n\n[디렉터 메모]\n${extraContext}` : ''}\n\n[제출 내용]\n${question}\n\n---\n\n[참고 자료]\n${contextStr}${casesBlock}\n\n---\n\n커밍쏜이 직접 말해주듯 구어체로 피드백을 작성해주세요. Why와 서사를 먼저 짚고, 핵심 방향을 제시하고, 실행 가능한 다음 스텝으로 마무리. 400~600자 내외.`;
+      ? `${studentName || '수강생'}의 미션입니다.${extraContext ? `\n\n[디렉터 메모]\n${extraContext}` : ''}\n\n[제출 내용]\n${question}\n\n---\n\n[참고 자료]\n${contextStr}${casesBlock}\n\n---\n\n[✅ 잘 잡고 있는 방향]\n(2가지, 이유 포함)\n\n[🔧 더 디깅이 필요한 부분]\n(2~3가지)\n\n[💡 다음 스텝]\n(실행 가능한 액션 2~3가지)`
+      : `${studentName || '수강생'}의 미션입니다.${extraContext ? `\n\n[디렉터 메모]\n${extraContext}` : ''}\n\n[제출 내용]\n${question}\n\n---\n\n[참고 자료]\n${contextStr}${casesBlock}\n\n---\n\n커밍쏜이 직접 말해주듯 구어체로 피드백을 작성해주세요. Why와 서사를 먼저 짚고, 핵심 방향을 제시하고, 실행 가능한 다음 스텝으로 마무리. 400~600자 내외.`;
   }
 
   try {

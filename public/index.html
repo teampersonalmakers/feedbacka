@@ -125,11 +125,6 @@ textarea#inp:focus { outline:none; border-color:var(--accent); }
   <div class="composer">
     <div class="chips">
       <input class="chip-in" id="stuName" placeholder="수강생 이름 (선택)">
-      <select class="chip-in" id="mtype">
-        <option value="channel">채널 기획</option>
-        <option value="content">콘텐츠 기획</option>
-        <option value="free" selected>자유 질문</option>
-      </select>
       <div class="mode-tg">
         <button id="mConv" class="on" onclick="setMode('conv')">구어체</button>
         <button id="mRep" onclick="setMode('report')">문어체</button>
@@ -163,7 +158,6 @@ var mode = 'conv';
 var busy = false;
 var ocrText = '';
 var attMeta = null;   // { url, name } — Storage 에 올라간 워크시트 캡처본
-var MTLABEL = { channel: '채널 기획', content: '콘텐츠 기획', free: '자유 질문' };
 
 function setMode(m) {
   mode = m;
@@ -386,7 +380,6 @@ async function send() {
   if (emptyEl) emptyEl.remove();
 
   var student = document.getElementById('stuName').value.trim();
-  var mtypeVal = document.getElementById('mtype').value;
   var hadAtt = !!ocrText;
   var question = text || '(첨부한 워크시트 내용을 검토해주세요)';
   if (ocrText) question += '\n\n[첨부 워크시트 내용]\n' + ocrText;
@@ -409,7 +402,7 @@ async function send() {
   scrollBottom();
   t.value = ''; autoGrow(); clearAtt();
 
-  var body = { question: question, chat: true, searchQuery: (text || question).slice(0, 800), category: mtypeVal, missionType: MTLABEL[mtypeVal], studentName: student, extraContext: extra, mode: mode, stream: true };
+  var body = { question: question, chat: true, searchQuery: (text || question).slice(0, 800), studentName: student, extraContext: extra, mode: mode, stream: true };
   if (turns.length > 1) body.contextQ = '1';
 
   try {

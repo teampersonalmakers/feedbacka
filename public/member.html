@@ -249,21 +249,12 @@ textarea.q-input::placeholder { color: var(--ink-light); }
       <div class="header-sub">Coming Soon AI · Powered by Claude</div>
     </div>
   </div>
-  <div class="header-badge">MEMBERSHIP</div>
+  <div class="header-badge">QUICK</div>
 </div>
 
 <div class="intro">
   <h1>유튜브 브랜딩 & 콘텐츠<br>AI 코칭</h1>
-  <p>Personalmakers AI 철학과 200개 이상의 콘텐츠를 학습한 AI가<br>당신의 채널과 콘텐츠를 직접 피드백해드립니다.</p>
-  <div class="cat-pills">
-    <button class="cat-pill active" data-cat="channel" onclick="selectCat(this)">🎬 채널 콘셉트</button>
-    <button class="cat-pill" data-cat="content" onclick="selectCat(this)">📝 콘텐츠 기획</button>
-    <button class="cat-pill" data-cat="script" onclick="selectCat(this)">🎙 대본 피드백</button>
-    <button class="cat-pill" data-cat="thumbnail" onclick="selectCat(this)">🖼 썸네일·제목</button>
-    <button class="cat-pill" data-cat="monetization" onclick="selectCat(this)">💰 수익화 전략</button>
-    <button class="cat-pill" data-cat="operation" onclick="selectCat(this)">⚙️ 채널 운영</button>
-    <button class="cat-pill" data-cat="free" onclick="selectCat(this)">💬 자유 질문</button>
-  </div>
+  <p>대화 없이 질문 하나에 답 하나. 수강생 기억·워크시트·기록이 필요하면<br>코치 화면(첫 페이지)을 쓰세요.</p>
 </div>
 
 <div class="main">
@@ -272,12 +263,11 @@ textarea.q-input::placeholder { color: var(--ink-light); }
   <div class="input-card">
     <div class="input-card-header">
       <span class="input-card-title">질문 입력</span>
-      <span class="input-cat-badge" id="catBadge">🎬 채널 콘셉트</span>
     </div>
     <div class="input-body">
       <textarea class="q-input" id="questionInput" rows="5"
         oninput="onInput()"
-        placeholder="채널 콘셉트, 콘텐츠 아이디어, 대본, 고민 등을 자유롭게 입력하세요.
+        placeholder="채널 콘셉트, 콘텐츠 기획, 대본, 썸네일·제목, 수익화, 운영 고민 등 무엇이든 자유롭게 적어주세요. 주제는 AI가 알아서 파악합니다.
 
 구체적으로 적을수록 더 정확한 피드백을 받을 수 있어요.
 
@@ -318,36 +308,8 @@ textarea.q-input::placeholder { color: var(--ink-light); }
 
 <script type="module" src="/firebase.js"></script>
 <script>
-let selectedCat = 'channel';
 let selectedMode = 'conv';
 let isLoading = false;
-
-const CAT_LABELS = {
-  channel:'🎬 채널 콘셉트', content:'📝 콘텐츠 기획', script:'🎙 대본',
-  thumbnail:'🖼 썸네일·제목', monetization:'💰 수익화', operation:'⚙️ 채널 운영', free:'💬 자유 질문'
-};
-
-// ─── Category ─────────────────────────────────────────────────────────────────
-function selectCat(btn) {
-  document.querySelectorAll('.cat-pill').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  selectedCat = btn.dataset.cat;
-  document.getElementById('catBadge').textContent = CAT_LABELS[selectedCat] || selectedCat;
-  updatePlaceholder();
-}
-
-function updatePlaceholder() {
-  const placeholders = {
-    channel: '채널명, 타겟, 콘셉트, 왜 이 채널을 시작하려는지를 적어주세요.\n\n구체적으로 적을수록 더 정확한 피드백을 드릴 수 있어요.',
-    content: '기획 중인 콘텐츠 아이디어나 제목, 타겟 시청자, 다루려는 내용을 적어주세요.',
-    script: '피드백받고 싶은 대본이나 스크립트를 붙여넣어 주세요.',
-    thumbnail: '썸네일 컨셉이나 제목 아이디어를 적어주세요. 여러 개 옵션을 주셔도 됩니다.',
-    monetization: '현재 채널 상황과 수익화 관련 고민이나 계획을 적어주세요.',
-    operation: '채널 운영 관련 고민, 현재 상황, 구체적인 질문을 적어주세요.',
-    free: 'Personalmakers AI에게 하고 싶은 질문이나 고민을 자유롭게 적어주세요.',
-  };
-  document.getElementById('questionInput').placeholder = placeholders[selectedCat] || '질문을 입력하세요...';
-}
 
 // ─── Mode ────────────────────────────────────────────────────────────────────
 function setMode(m) {
@@ -386,12 +348,12 @@ async function handleSubmit() {
     const fbRes = await fetch('/api/feedback', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question, category: selectedCat, mode: selectedMode, searchQuery: question + ' ' + selectedCat, isPublic: true }),
+      body: JSON.stringify({ question, mode: selectedMode, isPublic: false }),
     });
     const fbData = await fbRes.json();
     if (fbData.error) throw new Error(fbData.error);
 
-    showFeedback({ question, answer: fbData.feedback, cat: selectedCat, mode: selectedMode, sources: fbData.sources || [], time: new Date().toLocaleString('ko-KR') });
+    showFeedback({ question, answer: fbData.feedback, mode: selectedMode, sources: fbData.sources || [], time: new Date().toLocaleString('ko-KR') });
 
   } catch(e) {
     resultsArea.innerHTML = `<div class="err-card">⚠️ ${esc(e.message)}<br><br>잠시 후 다시 시도해주세요.</div>`;
@@ -412,7 +374,7 @@ function showFeedback(record) {
       <div class="fb-avatar">✨</div>
       <div>
         <div class="fb-from">Personalmakers AI</div>
-        <div class="fb-cat">${CAT_LABELS[record.cat]||record.cat}</div>
+        <div class="fb-cat">${record.mode === 'structured' ? '구조화 피드백' : '대화형 피드백'}</div>
       </div>
       <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
         <span class="fb-time">${record.time}</span>
@@ -441,7 +403,6 @@ function copyText(btn, text) {
 function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/`/g,'\\`'); }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
-updatePlaceholder();
 
 // ─── 접근 통제 ───────────────────────────────────────────────────────────────
 // 비밀번호 게이트는 제거됐다. 구글 로그인 + 디렉터 화이트리스트를 firebase.js 가
