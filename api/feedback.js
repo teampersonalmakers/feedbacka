@@ -526,6 +526,10 @@ ${outputList.includes('썸네일 아이디어') ? `## 🖼 썸네일 아이디�
   ]).map((p, i) => `${i+1}. ${p}`).join('\n');
 
   const toneGuide = g.toneGuide || '직접적이고 핵심을 먼저 말합니다. 칭찬보다 구체적인 방향 제시를 우선합니다.';
+  // 피드백 순서 — 설정 페이지에서 커밍쏜이 정한 답변 흐름. 비어 있으면 넣지 않는다.
+  const feedbackOrder = (g.feedbackOrder || []).length > 0
+    ? '\n\n[피드백 순서 — 답변은 이 흐름을 따른다]\n' + g.feedbackOrder.map((f, i) => `${i + 1}. ${f}`).join('\n')
+    : '';
   const categoryRules = category && g.categoryGuidelines?.[category]?.rules
     ? `\n[${g.categoryGuidelines[category].name} 피드백 지침]\n` + g.categoryGuidelines[category].rules.map(r => `- ${r}`).join('\n')
     : '';
@@ -556,7 +560,7 @@ ${outputList.includes('썸네일 아이디어') ? `## 🖼 썸네일 아이디�
 ${corePhilosophy}
 
 [말투와 스타일]
-${toneGuide}${freeGuidelines}${doNotDo}${playbookStr}`;
+${toneGuide}${feedbackOrder}${freeGuidelines}${doNotDo}${playbookStr}`;
 
   let VARIABLE_SYSTEM = `${categoryRules ? categoryRules.replace(/^\n/, '') + '\n\n' : ''}당신의 과거 콘텐츠, 강의, 컨설팅 자료를 참고하여 답변하세요.
 ${isPublic

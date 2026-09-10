@@ -105,10 +105,13 @@ export const firestoreEnabled = () => !!getDb();
 const cache = new Map();
 function cached(key) {
   const c = cache.get(key);
-  return c && Date.now() - c.ts < TTL ? c.value : undefined;
+  return c && Date.now() - c.ts < (c.ttl || TTL) ? c.value : undefined;
 }
+// 지침·사례는 설정 페이지에서 고치면 1분 안에 반영되도록 짧게 잡는다.
+// 요청당 읽기 몇 건이 늘 뿐이라 무료 한도에 영향이 없다.
+const SHORT_TTL = { guidelines: 60 * 1000, cases: 60 * 1000 };
 function put(key, value) {
-  cache.set(key, { ts: Date.now(), value });
+  cache.set(key, { ts: Date.now(), value, ttl: SHORT_TTL[key] || TTL });
   return value;
 }
 function stale(key) {
@@ -137,6 +140,7 @@ export async function loadGuidelines() {
         case 'persona':   g.persona = body.join('\n\n'); break;
         case 'philosophy': g.corePhilosophy = body; break;
         case 'tone':      g.toneGuide = body.join('\n'); break;
+        case 'format':    g.feedbackOrder = body; break;   // 피드백 순서 (설정 페이지에서 편집)
         case 'freeGuide': g.freeGuidelines = body.join('\n'); break;
         case 'doNotDo':   g.doNotDo = body; break;
         case 'category':

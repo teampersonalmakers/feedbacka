@@ -19,6 +19,11 @@
 body { background: var(--bg); color: var(--ink); font-family: var(--font); min-height: 100vh; }
 #pwGate { position: fixed; inset: 0; z-index: 9999; background: #1c1a17;
   display: flex; align-items: center; justify-content: center; }
+.subnav { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 20px; }
+.subnav a { text-decoration: none; padding: 8px 14px; border-radius: 18px; border: 1px solid var(--border);
+  background: var(--paper); color: var(--ink-mid); font-size: 12.5px; font-weight: 700; }
+.subnav a.on { background: var(--warm-dark); border-color: var(--warm-dark); color: #f5f0e8; }
+.subnav a:hover:not(.on) { border-color: var(--accent); color: var(--accent); }
 
 .header { background: var(--warm-dark); padding: 16px 28px; display: flex; align-items: center; gap: 14px; }
 .header-brand { display: flex; align-items: center; gap: 12px; }
@@ -134,8 +139,8 @@ body { background: var(--bg); color: var(--ink); font-family: var(--font); min-h
   <div class="header-brand">
     <div class="header-avatar">🔒</div>
     <div>
-      <div class="header-name">내부 인사이트</div>
-      <div class="header-sub">지식베이스 원문 자산 · 커밍쏜 전용</div>
+      <div class="header-name">설정 · 지식베이스</div>
+      <div class="header-sub">AI가 읽는 원문 자산 · 커밍쏜 전용</div>
     </div>
   </div>
   <div class="spacer"></div>
@@ -143,6 +148,11 @@ body { background: var(--bg); color: var(--ink); font-family: var(--font); min-h
 </header>
 
 <div class="wrap">
+  <nav class="subnav">
+    <a href="/settings.html#guide">🧭 AI 지침</a>
+    <a href="/settings.html#cases">📁 디렉팅 사례</a>
+    <a class="on" href="/insight.html">📚 지식베이스(자막)</a>
+  </nav>
   <div class="intro">
     <h1>지식베이스 원문</h1>
     <p>AI가 참고하는 모든 소스의 원문입니다. 유튜브 자막, 컨설팅 녹취, 책·전자책이 여기 모입니다.</p>

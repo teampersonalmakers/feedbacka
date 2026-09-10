@@ -159,8 +159,28 @@ service cloud.firestore {
     // 서버(Admin SDK)는 규칙을 우회하므로 api/*.js 는 정상 동작하고,
     // 브라우저에서는 읽기·쓰기 모두 막힌다. 커밍쏜의 컨설팅 자산이
     // 클라이언트로 새어나가지 않게 하기 위해서다.
-    match /guidelines/{id} { allow read, write: if false; }
-    match /cases/{id}      { allow read, write: if false; }
+    // ── AI 지침 / 디렉팅 사례 — 설정 페이지에서 커밍쏜만 편집 ──────────────
+    // 여기 내용이 곧 시스템 프롬프트다. admin 디렉터도 열지 않는다.
+    match /guidelines/{id} {
+      allow read: if isOwnerOnly();
+      allow create, update: if isOwnerOnly()
+        && request.resource.data.section in ['persona', 'philosophy', 'tone', 'format', 'freeGuide', 'doNotDo', 'category']
+        && request.resource.data.body is list
+        && request.resource.data.active is bool
+        && sizeOk();
+      allow delete: if isOwnerOnly();
+    }
+    match /cases/{id} {
+      allow read: if isOwnerOnly();
+      allow create, update: if isOwnerOnly()
+        && request.resource.data.summary is string
+        && request.resource.data.summary.size() > 0
+        && request.resource.data.summary.size() <= 300
+        && request.resource.data.get('body', '') is string
+        && request.resource.data.aiApplied is bool
+        && sizeOk();
+      allow delete: if isOwnerOnly();
+    }
     match /ratings/{id}    { allow read, write: if false; }
     match /history/{id}    { allow read, write: if false; }
     match /metrics/{id}    { allow read, write: if false; }

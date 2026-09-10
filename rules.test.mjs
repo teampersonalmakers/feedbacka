@@ -140,10 +140,22 @@ await t('화이트리스트 밖 계정도 당연히 차단',
   () => assertFails(getDocs(collection(stranger, 'kbSources'))));
 
 console.log('\n── 팀 지식 컬렉션 (서버 전용) ──');
-await t('소유자도 브라우저에서 guidelines 읽기 차단',
-  () => assertFails(getDoc(doc(owner, 'guidelines', 'g1'))));
-await t('cases 읽기 차단',
-  () => assertFails(getDoc(doc(owner, 'cases', 'c1'))));
+await t('커밍쏜은 guidelines 읽기 가능 (설정 페이지)',
+  () => assertSucceeds(getDoc(doc(owner, 'guidelines', 'g1'))));
+await t('커밍쏜은 guidelines 쓰기 가능',
+  () => assertSucceeds(setDoc(doc(owner, 'guidelines', 'tone'), { section: 'tone', body: ['짧게'], active: true, order: 3 })));
+await t('guidelines 알 수 없는 section 차단',
+  () => assertFails(setDoc(doc(owner, 'guidelines', 'x'), { section: 'hack', body: ['x'], active: true })));
+await t('guidelines body 가 문자열이면 차단 (배열이어야)',
+  () => assertFails(setDoc(doc(owner, 'guidelines', 'x'), { section: 'tone', body: 'x', active: true })));
+await t('admin 디렉터도 guidelines 읽기 차단',
+  () => assertFails(getDoc(doc(heidi, 'guidelines', 'g1'))));
+await t('커밍쏜은 cases 읽기·쓰기 가능',
+  () => assertSucceeds(setDoc(doc(owner, 'cases', 'c1'), { summary: '요약', body: '본문', aiApplied: true })));
+await t('cases summary 빈 값 차단',
+  () => assertFails(setDoc(doc(owner, 'cases', 'c2'), { summary: '', body: '본문', aiApplied: true })));
+await t('디렉터는 cases 읽기 차단',
+  () => assertFails(getDoc(doc(heidi, 'cases', 'c1'))));
 await t('chunks(벡터 청크)는 소유자도 브라우저에서 읽기 차단',
   () => assertFails(getDoc(doc(owner, 'chunks', 'k1'))));
 await t('chunks 쓰기 차단',

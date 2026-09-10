@@ -379,6 +379,48 @@ function gateFatal(detail) {
 
       async deleteKb(id) { await F.deleteDoc(F.doc(db, 'kbSources', id)); },
 
+      // ── AI 지침 (설정 페이지) — 커밍쏜 전용. 내용이 곧 시스템 프롬프트다. ──
+      async listGuidelines() {
+        const snap = await F.getDocs(F.collection(db, 'guidelines'));
+        return snap.docs.map((d) => Object.assign({ id: d.id }, d.data()))
+          .sort((a, b) => (a.order || 0) - (b.order || 0));
+      },
+      async saveGuideline(id, data) {
+        const body = (data.body || []).map((x) => cut(String(x).trim(), 2000)).filter(Boolean).slice(0, 60);
+        const payload = {
+          section: data.section, category: data.category || '', name: cut(data.name || '', 100),
+          body, active: data.active !== false, order: Number(data.order) || 0,
+          updatedAt: Date.now(), updatedBy: user.email,
+        };
+        const ref = F.doc(db, 'guidelines', id);
+        await F.setDoc(ref, payload, { merge: true });
+        return ref.id;
+      },
+      async deleteGuideline(id) { await F.deleteDoc(F.doc(db, 'guidelines', id)); },
+
+      // ── 디렉팅 사례 (설정 페이지) — aiApplied 가 켜진 것만 AI 가 참고한다. ──
+      async listCases() {
+        const snap = await F.getDocs(F.collection(db, 'cases'));
+        return snap.docs.map((d) => Object.assign({ id: d.id }, d.data()))
+          .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      },
+      async saveCase(id, data) {
+        const payload = {
+          summary: cut(String(data.summary || '').trim(), 300),
+          body: cut(String(data.body || ''), 20000),
+          cohort: cut(data.cohort || '', 30), round: cut(data.round || '', 30),
+          director: cut(data.director || '', 50), participants: cut(data.participants || '', 200),
+          confirmed: data.confirmed !== false, aiApplied: !!data.aiApplied,
+          updatedAt: Date.now(), updatedBy: user.email,
+        };
+        if (!payload.summary) throw new Error('요약(제목)을 입력해주세요');
+        if (id) { await F.setDoc(F.doc(db, 'cases', id), payload, { merge: true }); return id; }
+        const ref = F.doc(F.collection(db, 'cases'));
+        await F.setDoc(ref, Object.assign({ createdAt: Date.now(), source: 'app' }, payload));
+        return ref.id;
+      },
+      async deleteCase(id) { await F.deleteDoc(F.doc(db, 'cases', id)); },
+
       // ── 플레이북 ────────────────────────────────────────────────────────
       // 디렉터가 초안을 쓰고, 커밍쏜(admin)이 승인한다.
       // 승인된 Q&A 만 api/feedback.js 가 시스템 프롬프트에 넣는다.
@@ -654,10 +696,10 @@ function gateFatal(detail) {
     if (!host) return;
 
     // 내비게이션 — 현재 페이지에 해당하는 링크는 띄우지 않는다.
-    // '내부 인사이트'는 소유자 계정에만 보인다(규칙에서도 막혀 있다).
+    // '설정'(AI 지침·디렉팅 사례·지식베이스)은 소유자 계정에만 보인다(규칙에서도 막혀 있다).
     const links = [
       { id: 'pmNavPlaybook', href: '/playbook.html', label: '📒 플레이북', match: /\/playbook(\.html)?$/, show: true },
-      { id: 'pmNavInsight', href: '/insight.html', label: '🔒 내부 인사이트', match: /\/insight(\.html)?$/, show: api.isOwner() },
+      { id: 'pmNavInsight', href: '/settings.html', label: '⚙️ 설정', match: /\/(settings|insight)(\.html)?$/, show: api.isOwner() },
     ];
     let first = true;
     for (const l of links) {
@@ -707,7 +749,7 @@ function gateFatal(detail) {
       menu.appendChild(who);
       item('✏️ 닉네임 변경', () => openNickname(api));
       if (api.isAdmin()) item('👥 디렉터 관리', () => openAdmin(api));
-      if (api.isOwner() && !/\/insight(\.html)?$/.test(location.pathname)) item('🔒 내부 인사이트', () => { location.href = '/insight.html'; });
+      if (api.isOwner() && !/\/(settings|insight)(\.html)?$/.test(location.pathname)) item('⚙️ 설정 (AI 지침·사례·지식베이스)', () => { location.href = '/settings.html'; });
       if (!/\/playbook(\.html)?$/.test(location.pathname)) item('📒 플레이북', () => { location.href = '/playbook.html'; });
       item('🚪 로그아웃', () => { if (confirm('로그아웃할까요?')) api.signOut(); }, 'danger');
       document.body.appendChild(menu);
