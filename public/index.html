@@ -55,13 +55,13 @@ main { flex:1; overflow-y:auto; }
 .act:hover { background:var(--accent-soft); border-color:var(--accent); color:var(--accent); }
 /* 마우스를 올리면 작은 창으로 무엇을 하는 버튼인지 알려준다 (헷갈림 방지) */
 .act[data-tip] { position:relative; }
-.act[data-tip]::after { content:attr(data-tip); position:absolute; left:0; bottom:calc(100% + 8px); z-index:20;
+.act[data-tip]::after { content:attr(data-tip); position:absolute; left:0; top:calc(100% + 8px); z-index:20;
   background:#1a1d23; color:#fff; font-size:12px; font-weight:500; line-height:1.5; padding:8px 11px; border-radius:8px;
   white-space:nowrap; box-shadow:0 8px 24px rgba(16,24,40,.18); opacity:0; transform:translateY(4px); pointer-events:none;
   transition:opacity .12s, transform .12s; }
-.act[data-tip]::before { content:''; position:absolute; left:14px; bottom:calc(100% + 3px); border:5px solid transparent; border-top-color:#1a1d23;
+.act[data-tip]::before { content:''; position:absolute; left:14px; top:calc(100% + 3px); border:5px solid transparent; border-bottom-color:#1a1d23;
   opacity:0; pointer-events:none; transition:opacity .12s; }
-.act[data-tip]:hover::after, .act[data-tip]:hover::before { opacity:1; transform:none; }
+.act[data-tip]:hover::after, .act[data-tip]:hover::before { opacity:1; transform:none; transition-delay:.25s; }
 .act:disabled[data-tip]::after, .act:disabled[data-tip]::before { display:none; }
 .act:disabled { opacity:.55; cursor:default; }
 footer { background:var(--panel); border-top:1px solid var(--border); padding:10px 16px 14px; }
