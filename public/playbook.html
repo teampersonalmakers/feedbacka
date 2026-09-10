@@ -55,6 +55,14 @@ body { background: var(--bg); color: var(--ink); font-family: var(--font); min-h
 .search { border: 1px solid var(--border); border-radius: 9px; padding: 8px 12px;
   font-family: var(--font); font-size: 12.5px; width: 200px; background: var(--paper); color: var(--ink); }
 .search:focus { outline: none; border-color: var(--accent); }
+.pill.rate { background: #fdecea; color: #c0392b; border: 1px solid #f5c6c0; }
+.ev-row { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin: 8px 0; font-size: 13px; }
+.ev-row .sc { display: inline-block; min-width: 34px; text-align: center; font-weight: 800; border-radius: 8px; padding: 2px 8px; margin-right: 8px; }
+.sc5, .sc4 { background: #e8f5ec; color: #2d7a4a; } .sc3 { background: #fff4e0; color: #a86400; } .sc2, .sc1, .sc0 { background: #fdecea; color: #c0392b; }
+.ev-row .rs { color: var(--ink-mid); margin: 6px 0; line-height: 1.6; }
+.ev-row details { margin-top: 6px; font-size: 12.5px; } .ev-row summary { cursor: pointer; color: var(--ink-mid); }
+.ev-row pre { white-space: pre-wrap; font-family: inherit; background: var(--bg); border-radius: 8px; padding: 8px 10px; margin: 6px 0; line-height: 1.6; }
+.ev-opts { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; font-size: 13px; }
 .mine { display: flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--ink-mid); white-space: nowrap; cursor: pointer; }
 .mine input { accent-color: var(--accent); }
 .btn { border: 0; border-radius: 9px; padding: 9px 15px; font-family: var(--font);
@@ -157,6 +165,7 @@ body { background: var(--bg); color: var(--ink); font-family: var(--font); min-h
     <select class="search" id="catFilter" title="카테고리"><option value="">카테고리 전체</option></select>
     <label class="mine"><input type="checkbox" id="mineOnly"> 내 항목만</label>
     <input class="search" id="search" placeholder="질문·답변·수강생 검색" />
+    <button class="btn btn-ghost" id="evalBtn" hidden title="승인 Q&A 로 AI 답변을 자동 채점합니다">🧪 자동 평가</button>
     <button class="btn btn-primary" id="newBtn">＋ 새 질문 등록</button>
   </div>
 
@@ -244,8 +253,9 @@ function renderList() {
     d.className = 'row';
     d.onclick = function() { openEditor(r); };
     d.innerHTML =
-      '<div class="q">' + esc(r.question || '(제목 없음)') +
-        (r.originalQuestion ? '<span class="sub">' + esc(r.originalQuestion) + '</span>' : '') + '</div>' +
+      '<div class="q">' + (r.fromRating ? '<span class="pill rate" title="디렉터가 👎 를 눌러 자동 등록된 항목">👎 평가</span> ' : '') +
+        esc(r.question || '(제목 없음)') +
+        (r.originalQuestion && r.originalQuestion !== r.question ? '<span class="sub">' + esc(r.originalQuestion) + '</span>' : '') + '</div>' +
       '<div class="cell hide-sm">' + (r.category ? '<span class="pill cat">' + esc(r.category) + '</span>' : '') + '</div>' +
       '<div class="cell hide-sm">' + esc(r.director || '') + '</div>' +
       '<div class="cell hide-sm">' + esc(r.student || '') + '</div>' +
@@ -276,6 +286,8 @@ function openEditor(row) {
       '</div>' +
       '<div class="modal-body">' +
         (readOnly ? '<div class="locked">✅ 승인된 항목입니다. 이미 AI 피드백에 반영되고 있어요.<br>수정과 승인 해제는 커밍쏜만 할 수 있습니다.</div>' : '') +
+        (r.fromRating ? '<div class="locked">👎 디렉터가 아쉬움을 표시한 AI 답변입니다. 아래 답변을 커밍쏜 기조로 고쳐 승인하면 다음부터 그 답이 반영됩니다.' +
+          (r.ratingComment ? '<br><b>아쉬운 점:</b> ' + esc(r.ratingComment) : '') + '</div>' : '') +
         '<div class="field"><label>질문 <span class="req">*</span></label>' +
           '<input id="pbQ" maxlength="500" placeholder="예: 조회수가 잘 안 나와요, 뭐가 문제일까요"></div>' +
         '<div class="field"><label>원본 질문</label>' +
@@ -404,8 +416,79 @@ document.getElementById('search').addEventListener('input', function(e) {
   document.getElementById('mineOnly').addEventListener('change', function(e) { mineOnly = e.target.checked; renderList(); });
 })();
 
-window.addEventListener('pmfire:ready', reload);
-if (window.PMFire) reload();
+// ─── 자동 평가 (커밍쏜 전용, /api/eval) ────────────────────────────────────
+function scoreClass(n) { return 'sc sc' + Math.max(0, Math.min(5, Number(n) || 0)); }
+function evalRowHtml(r) {
+  return '<div class="ev-row">' +
+    '<span class="' + scoreClass(r.score) + '">' + (r.score || '–') + '</span>' +
+    '<b>' + esc(r.question || '') + '</b>' +
+    '<span class="sub" style="display:inline;margin-left:8px;color:var(--ink-soft)">' + esc(r.verdict || '') +
+      (r.skipPlaybook ? ' · 플레이북 제외' : '') + (r.createdAt ? ' · ' + new Date(r.createdAt).toLocaleString('ko-KR') : '') + '</span>' +
+    '<div class="rs">' + esc(r.reason || '') + '</div>' +
+    '<details><summary>AI 답변 / 승인 답변 보기</summary>' +
+      '<div style="font-weight:700;margin-top:6px">AI 답변</div><pre>' + esc(r.actual || '(없음)') + '</pre>' +
+      '<div style="font-weight:700">승인 답변</div><pre>' + esc(r.expected || '') + '</pre></details>' +
+  '</div>';
+}
+async function evalApi(method, body) {
+  var token = await window.PMFire.idToken();
+  var res = await fetch('/api/eval', { method: method, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: body ? JSON.stringify(body) : undefined });
+  var d = await res.json();
+  if (!res.ok || d.error) throw new Error(d.error || ('HTTP ' + res.status));
+  return d;
+}
+function openEval() {
+  var back = document.createElement('div');
+  back.className = 'back';
+  back.innerHTML =
+    '<div class="modal">' +
+      '<div class="modal-head"><h3>🧪 자동 평가</h3><button class="btn btn-ghost" id="evClose">닫기</button></div>' +
+      '<div class="modal-body">' +
+        '<div class="help" style="margin-bottom:10px">승인된 Q&amp;A 를 AI 에게 다시 묻고, 승인 답변의 기조·핵심을 지키는지 1~5점으로 채점합니다. ' +
+          '<b>플레이북 제외</b>를 켜면 승인 답변을 프롬프트에서 빼고 답하게 해, 자료·지침만으로 기조가 나오는지 봅니다.</div>' +
+        '<div class="ev-opts">' +
+          '<label>건수 <select id="evN"><option>3</option><option selected>5</option><option>8</option><option>10</option></select></label>' +
+          '<label class="mine"><input type="checkbox" id="evSkip"> 플레이북 제외</label>' +
+          '<button class="btn btn-primary" id="evRun">실행</button>' +
+          '<span class="msg" id="evMsg"></span>' +
+        '</div>' +
+        '<div id="evList"><div class="empty">불러오는 중…</div></div>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(back);
+  var $ = function(id) { return back.querySelector('#' + id); };
+  var close = function() { back.remove(); };
+  $('evClose').onclick = close;
+  back.onclick = function(e) { if (e.target === back) close(); };
+
+  function paint(list, head) {
+    var el = $('evList');
+    if (!list.length) { el.innerHTML = '<div class="empty">아직 평가 기록이 없습니다.</div>'; return; }
+    el.innerHTML = (head || '') + list.map(evalRowHtml).join('');
+  }
+  async function loadPrev() {
+    try { var d = await evalApi('GET'); paint(d.evals || []); }
+    catch (e) { $('evList').innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; }
+  }
+  $('evRun').onclick = async function() {
+    var btn = $('evRun'), msg = $('evMsg');
+    btn.disabled = true; msg.className = 'msg ok'; msg.textContent = '평가 중… 건당 20~40초';
+    try {
+      var d = await evalApi('POST', { limit: Number($('evN').value), skipPlaybook: $('evSkip').checked });
+      msg.textContent = '완료 · 평균 ' + d.avg + '점 (' + d.count + '건)';
+      var prev = [];
+      try { prev = (await evalApi('GET')).evals || []; } catch (e) {}
+      paint(prev, '');
+    } catch (e) { msg.className = 'msg err'; msg.textContent = '실패: ' + e.message; }
+    btn.disabled = false;
+  };
+  loadPrev();
+}
+document.getElementById('evalBtn').onclick = openEval;
+function showEvalBtn() { document.getElementById('evalBtn').hidden = !(window.PMFire && window.PMFire.isOwner && window.PMFire.isOwner()); }
+
+window.addEventListener('pmfire:ready', function() { showEvalBtn(); reload(); });
+if (window.PMFire) { showEvalBtn(); reload(); }
 </script>
 <script type="module" src="/firebase.js"></script>
 </body>

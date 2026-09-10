@@ -1,7 +1,7 @@
 // api/rate.js — 답변 평가(👍/👎) 기록
 // Firestore 가 정본. 서비스 계정이 없을 때만 예전 Notion 경로로 폴백한다.
 
-import { addRating, firestoreEnabled } from './_firestore.js';
+import { addRating, addPlaybookFromRating, firestoreEnabled } from './_firestore.js';
 
 const NOTION_KEY = (process.env.NOTION_API_KEY || '').trim();
 const RATE_DB_ID = (process.env.RATE_DB_ID || '5707368abfea41a2a861d80ba48aa8ac').trim();
@@ -44,7 +44,15 @@ export default async function handler(req, res) {
 
     if (firestoreEnabled()) {
       const id = await addRating({ question, answer, rating, student, comment });
-      if (id) return res.status(200).json({ ok: true, store: 'firestore', id });
+      if (id) {
+        // 👎 는 플레이북 '대기' 로 자동 등록 — 커밍쏜이 바로잡아 승인하면 다음부터 반영된다.
+        let playbookId = null;
+        if (rating === 'down' && answer) {
+          try { playbookId = await addPlaybookFromRating({ question, answer, student, comment, ratingId: id }); }
+          catch (e) { console.warn('[rate] 검수대기 등록 실패:', e.message); }
+        }
+        return res.status(200).json({ ok: true, store: 'firestore', id, playbookId });
+      }
     }
 
     if (!NOTION_KEY) return res.status(500).json({ error: 'FIREBASE_SERVICE_ACCOUNT / NOTION_API_KEY 둘 다 설정되지 않았습니다' });

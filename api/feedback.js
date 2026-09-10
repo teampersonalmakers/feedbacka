@@ -495,6 +495,10 @@ ${outputList.includes('썸네일 아이디어') ? `## 🖼 썸네일 아이디�
     playbook = await loadPlaybookFromNotion(NOTION_KEY);
   }
   playbook = playbook || [];
+  // 자동 평가(api/eval.js)가 서버 안에서 직접 호출할 때만 켜진다. 클라이언트 요청 본문으로는
+  // 세울 수 없는 속성이라 외부에서 플레이북을 빼고 답하게 만들 수는 없다.
+  if (req.__skipPlaybook) playbook = [];
+  if (req.__eval) M.eval = true;
 
   // 디렉팅 사례 아카이브(컨설팅 내용) — Notion 에서 'AI반영' 체크된 것만.
   // 기존 코드에는 이 경로가 아예 없어서, 컴펌된 사례가 AI 에 닿지 않고 있었다.

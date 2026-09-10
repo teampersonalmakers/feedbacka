@@ -355,7 +355,10 @@ function addActions(b, q, a, sources, evidence) {
     up.dataset.done = dn.dataset.done = '1';
     up.disabled = dn.disabled = true;
     btn.textContent = rating === 'up' ? '👍 반영됨' : '👎 반영됨';
-    fetch('/api/rate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question: q, answer: a, rating: rating, student: document.getElementById('stuName').value.trim(), comment: comment }) }).catch(function() {});
+    fetch('/api/rate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question: q, answer: a, rating: rating, student: document.getElementById('stuName').value.trim(), comment: comment }) })
+      .then(function(r) { return r.json(); })
+      .then(function(d) { if (d && d.playbookId) btn.textContent = '👎 반영됨 · 플레이북 검수대기 등록'; })
+      .catch(function() {});
   }
   up.onclick = function() { sendRate(up, 'up'); };
   dn.onclick = function() { sendRate(dn, 'down'); };

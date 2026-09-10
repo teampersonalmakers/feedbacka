@@ -26,6 +26,7 @@ export const COL = {
   history: 'history',         // 자동 대화 기록
   metrics: 'metrics',         // 요청별 성능 지표 (지연·토큰·캐시·참조소스)
   chunks: 'chunks',           // 지식베이스 청크 + 벡터 (findNearest 대상)
+  evals: 'evals',             // 승인 Q&A 기반 자동 평가 결과
 };
 
 const TTL = 5 * 60 * 1000;
@@ -161,8 +162,8 @@ export async function loadPlaybook() {
   try {
     const snap = await db.collection(COL.playbook).where('status', '==', '승인').limit(100).get();
     const items = snap.docs
-      .map((d) => d.data())
-      .map((r) => ({ q: r.question || '', category: r.category || '', answer: r.answer || '' }))
+      .map((d) => Object.assign({ id: d.id }, d.data()))
+      .map((r) => ({ id: r.id, q: r.question || '', category: r.category || '', answer: r.answer || '' }))
       .filter((i) => i.q && i.answer);
     console.log('[Firestore] 플레이북 로드:', items.length + '건');
     return put('playbook', items);
@@ -325,6 +326,41 @@ export function addMetrics(m) {
 }
 
 // "AI 학습시키기" — 검수 대기 초안 (기존 api/playbook.js)
+// 👎 평가 → 검수대기 초안. 커밍쏜이 플레이북 '대기' 탭에서 바로잡아 승인하면
+// 다음부터 그 답이 AI 에 들어간다. 아쉬운 답변이 학습 기회로 이어지는 경로.
+export function addPlaybookFromRating({ question, answer, student, comment, ratingId }) {
+  return add(COL.playbook, {
+    question: cut(String(question).replace(/\s+/g, ' ').trim(), 500),
+    originalQuestion: cut(question, 60000),
+    answer: cut(answer, 200000),
+    category: '',
+    student: cut(student, 100),
+    director: '',
+    status: '대기',
+    type: '평가기반',
+    source: 'app',
+    fromRating: true,
+    ratingId: ratingId || '',
+    ratingComment: cut(comment, 1900),
+  });
+}
+
+export function addEval(e) {
+  return add(COL.evals, {
+    runId: cut(e.runId, 60), playbookId: cut(e.playbookId, 60),
+    question: cut(e.question, 2000), expected: cut(e.expected, 8000), actual: cut(e.actual, 12000),
+    score: Number(e.score) || 0, verdict: cut(e.verdict, 20), reason: cut(e.reason, 2000),
+    skipPlaybook: !!e.skipPlaybook, model: cut(e.model, 60), ms: Number(e.ms) || 0, by: cut(e.by, 200),
+  });
+}
+
+export async function listEvals(limit = 60) {
+  const db = getDb();
+  if (!db) return [];
+  const snap = await db.collection(COL.evals).orderBy('createdAt', 'desc').limit(limit).get();
+  return snap.docs.map((d) => Object.assign({ id: d.id }, d.data()));
+}
+
 export function addPlaybookDraft({ question, answer, category }) {
   return add(COL.playbook, {
     question: cut(question, 60000),

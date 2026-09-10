@@ -148,6 +148,8 @@ await t('chunks(벡터 청크)는 소유자도 브라우저에서 읽기 차단'
   () => assertFails(getDoc(doc(owner, 'chunks', 'k1'))));
 await t('chunks 쓰기 차단',
   () => assertFails(setDoc(doc(owner, 'chunks', 'k1'), { text: 'x' })));
+await t('evals(자동 평가) 읽기 차단',
+  () => assertFails(getDoc(doc(owner, 'evals', 'e1'))));
 
 console.log('\n── 입력 검증 ──');
 await t('닉네임 20자 초과 차단',
