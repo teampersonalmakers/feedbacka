@@ -222,6 +222,10 @@ export function pickCases(cases, question, topK = 3) {
 }
 
 // ─── 읽기: 수강생 최근 상담 이력 ─────────────────────────────────────────────
+// 두 곳을 합쳐 본다:
+//   history  — 앱에서 디렉터가 상담할 때마다 자동으로 쌓이는 기록 (addHistory)
+//   playbook — 노션에서 옮겨온 과거 Q&A + 디렉터가 직접 등록한 것
+// 예전에는 playbook 만 읽어서, 앱에서 5번 상담해도 6번째에 그 5번을 몰랐다.
 export async function loadStudentHistory(name) {
   if (!name) return '';
   const key = 'stu:' + name;
@@ -231,16 +235,21 @@ export async function loadStudentHistory(name) {
   if (!db) return null;
   try {
     // createdAt 정렬은 복합 인덱스를 요구하므로, 적게 가져와 메모리에서 정렬한다.
-    const snap = await db.collection(COL.playbook).where('student', '==', name).limit(20).get();
-    const rows = snap.docs
+    const [h, p] = await Promise.all([
+      db.collection(COL.history).where('student', '==', name).limit(20).get(),
+      db.collection(COL.playbook).where('student', '==', name).limit(20).get(),
+    ]);
+    const rows = [...h.docs, ...p.docs]
       .map((d) => d.data())
+      .filter((r) => r.question || r.originalQuestion)
       .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
       .slice(0, 3);
     if (!rows.length) return put(key, '');
     const parts = rows.map((r) => {
       const q = (r.originalQuestion || r.question || '').slice(0, 300);
       const a = (r.answer || '').slice(0, 500);
-      return '과거 질문: ' + q + (a ? '\n당시 답변 요약: ' + a : '');
+      const when = r.createdAt ? new Date(r.createdAt).toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' }) : '';
+      return '과거 질문' + (when ? ' (' + when + ')' : '') + ': ' + q + (a ? '\n당시 답변 요약: ' + a : '');
     });
     return put(key, '[' + name + ' 수강생의 최근 상담 기록 — 이 맥락을 이어서 답변할 것]\n' + parts.join('\n---\n'));
   } catch (e) {
