@@ -86,25 +86,16 @@ textarea#inp:focus { outline:none; border-color:var(--accent); }
 #sendBtn { width:44px; height:44px; border-radius:12px; border:0; background:var(--accent); color:#fff; font-size:17px; cursor:pointer; transition:all .15s; flex-shrink:0; }
 #sendBtn:disabled { background:#b9c6e8; cursor:default; }
 .err { background:#fdf0ef; border:1px solid #f2c4bf; color:#c0392b; border-radius:10px; padding:10px 14px; font-size:12.5px; margin-top:8px; }
-#pwGate { position:fixed; inset:0; z-index:9999; background:#1c1a17; display:flex; align-items:center; justify-content:center; }
-.pw-box { background:#262320; border:1px solid #3a3530; border-radius:16px; padding:36px 40px; text-align:center; width:320px; }
-.pw-box h2 { color:#f0ede8; font-size:16px; margin-bottom:6px; }
-.pw-box p { color:#8a857e; font-size:12px; margin-bottom:18px; }
-.pw-box input { width:100%; border:1px solid #3a3530; background:#1c1a17; color:#f0ede8; border-radius:10px; padding:11px 14px; font-size:15px; text-align:center; letter-spacing:4px; font-family:var(--font); }
-.pw-box input:focus { outline:none; border-color:var(--accent); }
-.pw-box button { margin-top:12px; width:100%; border:0; background:var(--accent); color:#fff; border-radius:10px; padding:11px; font-size:13.5px; font-weight:700; cursor:pointer; font-family:var(--font); }
-.pw-err { color:#e07b6f; font-size:11.5px; height:16px; margin-top:8px; }
+#pwGate { position:fixed; inset:0; z-index:9999; background:var(--bg); display:flex; align-items:center; justify-content:center; }
+/* firebase.js 가 로그인 창을 채우기 전까지 잠깐 보이는 로딩 표시 */
+.gate-loading { display:flex; flex-direction:column; align-items:center; gap:12px; color:var(--ink-soft); font-size:12.5px; }
+.gate-loading .spin { width:22px; height:22px; border:2.5px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:gspin .8s linear infinite; }
+@keyframes gspin { to { transform:rotate(360deg); } }
 @media (max-width:640px) { .chip-in { width:104px; } .msg-u { max-width:88%; } .chatwrap { padding:18px 12px; } }
 </style>
 <body>
 <div id="pwGate">
-  <div class="pw-box">
-    <h2>Personalmakers AI</h2>
-    <p>디렉터 전용 · 비밀번호를 입력하세요</p>
-    <input type="password" id="pwInput" maxlength="10" autocomplete="off">
-    <div class="pw-err" id="pwErr"></div>
-    <button onclick="checkPW()">입장하기</button>
-  </div>
+  <div class="gate-loading"><div class="spin"></div><div>Personalmakers AI · 로그인 준비 중</div></div>
 </div>
 
 <header>
