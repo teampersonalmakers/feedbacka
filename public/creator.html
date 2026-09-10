@@ -318,14 +318,8 @@ const CHANNEL_DATA=`[커밍쏜 채널 데이터]
 - 나만의 경험: 일반론 X, 내가 직접 겪은 것만
 - 마지막: 시청자가 행동할 수 있는 한 문장으로 마무리`;
 
-let knowledgeBase=null;
-async function loadKnowledgeBase() {
-  try { const r=await fetch("/knowledge/base.json"); knowledgeBase=await r.json(); } catch(e){}
-}
-loadKnowledgeBase();
-
-function cosineSim(a,b){let d=0,na=0,nb=0;for(let i=0;i<a.length;i++){d+=a[i]*b[i];na+=a[i]*a[i];nb+=b[i]*b[i];}return d/(Math.sqrt(na)*Math.sqrt(nb)+1e-10);}
-function retrieve(v,k=8){if(!knowledgeBase?.documents)return[];const r=[];for(const doc of knowledgeBase.documents)for(const c of(doc.chunks||[])){if(!c.embedding)continue;r.push({docName:doc.name,text:c.text,score:cosineSim(v,c.embedding)});}return r.sort((a,b)=>b.score-a.score).slice(0,k);}
+// 대본 검색은 서버(/api/feedback)가 Firestore 벡터 검색으로 한다.
+// 예전엔 브라우저가 43MB 지식베이스를 내려받아 직접 계산했다.
 
 async function handleGenerate() {
   const topic=getTopic(), direction=document.getElementById("direction").value.trim();
@@ -334,19 +328,12 @@ async function handleGenerate() {
   document.getElementById("outputTitle").textContent="✨ 기획 생성 중...";
   document.getElementById("outputBody").innerHTML=`<div class="loading-wrap"><div class="loading-dots"><div class="loading-dot"></div><div class="loading-dot"></div><div class="loading-dot"></div></div><div class="loading-text" id="loadingText">대본 검색 중...</div></div>`;
   try {
-    let hits=[];
-    if(knowledgeBase){
-      const er=await fetch("/api/embed",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({texts:[topic],taskType:"RETRIEVAL_QUERY"})});
-      const ed=await er.json();
-      if(ed.embeddings?.[0])hits=retrieve(ed.embeddings[0],8);
-    }
-    const scriptContext=hits.length>0?hits.map(h=>`[${h.docName}]
-${h.text}`).join("\n\n---\n\n"):"(대본 없음)";
+    const scriptContext="(대본 없음)";   // 서버가 검색 결과로 대체한다
     const outputList=[]; if(outputs.title)outputList.push("제목 후보 5개"); if(outputs.script)outputList.push("대본 구조"); if(outputs.thumb)outputList.push("썸네일 아이디어");
     const typeStr=contentType==="mid"?"미드폼 (8~15분)":"쇼츠 (60초 이하)";
     const styleStr=[]; if(styles.draft)styleStr.push("바로 쓸 수 있는 구체적인 초안"); if(styles.direction)styleStr.push("방향 제시 및 핵심 포인트");
     document.getElementById("loadingText").textContent="AI 기획 중...";
-    const fr=await fetch("/api/feedback",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({question:topic,category:"creator",extraContext:direction,mode:"creator",hits,creatorOptions:{contentType,outputs,outputList,typeStr,styleStr,inputModeStr:inputMode==="keyword"?"키워드":"상황/스토리",channelData:CHANNEL_DATA,scriptContext}})});
+    const fr=await fetch("/api/feedback",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({question:topic,category:"creator",extraContext:direction,mode:"creator",creatorOptions:{contentType,outputs,outputList,typeStr,styleStr,inputModeStr:inputMode==="keyword"?"키워드":"상황/스토리",channelData:CHANNEL_DATA,scriptContext}})});
     const fd=await fr.json();
     if(fd.error)throw new Error(fd.error);
     resultText=fd.feedback;

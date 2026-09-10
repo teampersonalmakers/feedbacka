@@ -10,6 +10,7 @@
     "directors": "node scripts/directors.mjs",
     "test:rules": "npm i --no-save --no-audit --no-fund firebase @firebase/rules-unit-testing && npx --yes firebase-tools@15 emulators:exec --only firestore --project personalmakers-ai \"node rules.test.mjs\"",
     "chunks": "node scripts/build-chunks.mjs",
+    "chunks:link": "node scripts/link-kb-to-chunks.mjs",
     "chunks:check": "node scripts/build-chunks.mjs --check",
     "deploy:rules": "node scripts/deploy-rules.mjs"
   },

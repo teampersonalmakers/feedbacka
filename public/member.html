@@ -380,28 +380,17 @@ async function handleSubmit() {
   `;
 
   try {
-    // 1. 질문 임베딩
-    const embedRes = await fetch('/api/embed', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ texts: [question + ' ' + selectedCat], taskType: 'RETRIEVAL_QUERY' }),
-    });
-    const embedData = await embedRes.json();
-    if (embedData.error) throw new Error(embedData.error);
-
-    // 2. 지식베이스에서 검색
-    const hits = await retrieveFromKB(embedData.embeddings[0]);
-
-    // 3. 피드백 생성
+    // 검색은 서버가 한다 (Firestore 벡터 검색). 예전엔 브라우저가 43MB 지식베이스를
+    // 내려받아 직접 계산했는데, 서버가 같은 검색을 이미 하고 있어 그 값을 쓰지 않았다.
     const fbRes = await fetch('/api/feedback', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question, category: selectedCat, mode: selectedMode, hits, isPublic: true }),
+      body: JSON.stringify({ question, category: selectedCat, mode: selectedMode, searchQuery: question + ' ' + selectedCat, isPublic: true }),
     });
     const fbData = await fbRes.json();
     if (fbData.error) throw new Error(fbData.error);
 
-    showFeedback({ question, answer: fbData.feedback, cat: selectedCat, mode: selectedMode, sources: hits, time: new Date().toLocaleString('ko-KR') });
+    showFeedback({ question, answer: fbData.feedback, cat: selectedCat, mode: selectedMode, sources: fbData.sources || [], time: new Date().toLocaleString('ko-KR') });
 
   } catch(e) {
     resultsArea.innerHTML = `<div class="err-card">⚠️ ${esc(e.message)}<br><br>잠시 후 다시 시도해주세요.</div>`;
@@ -410,33 +399,6 @@ async function handleSubmit() {
     document.getElementById('submitBtn').disabled = false;
     onInput();
   }
-}
-
-// ─── KB Retrieval ─────────────────────────────────────────────────────────────
-let kb = null;
-async function loadKB() {
-  try {
-    const res = await fetch('/knowledge/base.json');
-    kb = await res.json();
-  } catch(e) { kb = { documents: [] }; }
-}
-
-function cosineSim(a, b) {
-  let dot=0, na=0, nb=0;
-  for(let i=0;i<a.length;i++){dot+=a[i]*b[i];na+=a[i]*a[i];nb+=b[i]*b[i];}
-  return dot/(Math.sqrt(na)*Math.sqrt(nb)+1e-10);
-}
-
-function retrieveFromKB(qVec, topK=6) {
-  if (!kb?.documents) return [];
-  const results = [];
-  for (const doc of kb.documents) {
-    for (const chunk of (doc.chunks||[])) {
-      if (!chunk.embedding) continue;
-      results.push({ docName: doc.name, docType: doc.type, text: chunk.text, score: cosineSim(qVec, chunk.embedding) });
-    }
-  }
-  return results.sort((a,b)=>b.score-a.score).slice(0,topK);
 }
 
 // ─── Show Feedback ────────────────────────────────────────────────────────────
@@ -478,7 +440,6 @@ function copyText(btn, text) {
 function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/`/g,'\\`'); }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
-loadKB();
 updatePlaceholder();
 
 // ─── 접근 통제 ───────────────────────────────────────────────────────────────

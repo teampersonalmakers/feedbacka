@@ -294,7 +294,7 @@ async function openDetail(r) {
       '</div>' +
       '<div class="modal-foot">' +
         '<button class="btn btn-danger" id="dDel">삭제</button>' +
-        '<button class="btn btn-ghost" id="dEmbed" title="자막을 청크로 잘라 AI 검색에 다시 반영합니다">AI 반영' + ((r.chunks && r.embeddedAt) ? ' ✓' : '') + '</button>' +
+        '<button class="btn btn-ghost" id="dEmbed" title="자막을 청크로 잘라 AI 검색에 다시 반영합니다">AI 반영' + (r.embeddedAt ? ' ✓' : '') + '</button>' +
         '<div class="msg" id="dMsg"></div><div class="grow"></div>' +
         '<button class="btn btn-ghost" id="dCopy">자막 복사</button>' +
         '<button class="btn btn-primary" id="dEdit">자막 교체</button>' +

@@ -106,8 +106,19 @@ export async function upsertKbChunks(kbId, key) {
   const src = doc.data();
   const text = String(src.transcript || '').trim();
   await deleteKbChunks(kbId);
+  // 노션에서 옮겨온 소스는 knowledge 청크로 이미 들어가 있다. 같은 자막이 두 벌
+  // 검색되지 않도록 옛 청크를 지우고 새 청크로 교체한다.
+  if (src.embeddedVia === 'knowledge' && src.knowledgeDocName) {
+    const old = await db.collection(COL.chunks)
+      .where('origin', '==', 'knowledge').where('docName', '==', src.knowledgeDocName).select().get();
+    for (let i = 0; i < old.docs.length; i += 400) {
+      const b = db.batch();
+      for (const d of old.docs.slice(i, i + 400)) b.delete(d.ref);
+      await b.commit();
+    }
+  }
   if (text.length < 40) {
-    await ref.set({ chunks: 0, embeddedAt: Date.now() }, { merge: true });
+    await ref.set({ chunks: 0, embeddedAt: Date.now(), embeddedVia: 'kbSources' }, { merge: true });
     return 0;
   }
   const parts = splitChunks(text);
@@ -127,6 +138,6 @@ export async function upsertKbChunks(kbId, key) {
     }
     await b.commit();
   }
-  await ref.set({ chunks: parts.length, embeddedAt: Date.now() }, { merge: true });
+  await ref.set({ chunks: parts.length, embeddedAt: Date.now(), embeddedVia: 'kbSources' }, { merge: true });
   return parts.length;
 }
