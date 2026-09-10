@@ -25,7 +25,9 @@ public/       정적 페이지
 scripts/
   migrate-notion-to-firestore.mjs   노션 → Firestore 데이터 이전
   directors.mjs                     디렉터 화이트리스트 관리
-knowledge/    RAG 지식베이스 (base.json ~ base9.json, guidelines.json)
+  build-chunks.mjs                  지식베이스 청크 → Firestore chunks (벡터 검색용)
+  deploy-rules.mjs                  보안 규칙 배포 (서비스 계정)
+knowledge/    이월 지식베이스 원본 (base.json ~ base9.json) — 인덱스 없을 때 폴백용
 data/         영상 임베딩 / 자막
 ```
 
@@ -174,11 +176,39 @@ api/feedback.js 가 시스템 프롬프트에 주입  →  AI 피드백 정확�
 교정은 `api/kb-clean.js` 가 처리합니다. 긴 자막은 문장 경계로 나눠 순차 처리하며,
 요약하지 않고 모든 발화를 보존합니다.
 
-### 이 자막은 AI 가 바로 읽지 않습니다
+### 저장하면 AI 검색에 바로 반영됩니다
 
-AI 가 실제로 검색하는 것은 `knowledge/base*.json` 의 **미리 임베딩된 청크**입니다.
-`kbSources` 는 원문 보관과 대장(臺帳) 역할입니다. 새 자막을 AI 에 반영하려면
-임베딩을 다시 만들어야 합니다.
+[저장] 직후 `api/kb-embed.js` 가 자막을 약 1,500자 단위 청크로 잘라 Gemini 로
+임베딩하고 Firestore `chunks` 컬렉션에 씁니다. 다음 질문부터 검색에 잡힙니다.
+상세 화면의 **[AI 반영]** 버튼으로 언제든 다시 만들 수 있고, 소스를 지우면
+청크도 같이 지웁니다.
+
+### 지식베이스 검색 구조 (Firestore 벡터 검색)
+
+AI 가 검색하는 곳은 `chunks` 컬렉션 하나입니다.
+
+| origin      | 출처                                    | 건수   |
+|-------------|-----------------------------------------|--------|
+| `knowledge` | `knowledge/base*.json` (이월 자산, 282문서) | 2,344 |
+| `kbSources` | 내부 인사이트에서 새로 넣은 자막            | 저장할 때마다 |
+
+- 예전엔 요청마다 80MB JSON 을 파싱해 콜드스타트가 6.8초였습니다. 이제 `findNearest`
+  로 상위 6건만 가져옵니다.
+- 벡터는 **1536차원**입니다. Firestore 인덱스 상한(2048)에 맞춰 Gemini 3072차원의
+  앞 1536을 잘라 정규화합니다. 기존 벡터 대비 상위 6건 일치율 98% (`npm run chunks:check`).
+- 이월 자산 업로드: `npm run chunks` (재임베딩 없음, 여러 번 실행해도 안전)
+- **벡터 인덱스는 한 번 직접 만들어야 합니다.** 콘솔 UI 로는 만들 수 없고,
+  firebase-adminsdk 서비스 계정에는 인덱스 생성 권한이 없습니다.
+
+```
+gcloud firestore indexes composite create --project=personalmakers-ai \
+  --collection-group=chunks --query-scope=COLLECTION \
+  --field-config=vector-config='{"dimension":"1536","flat":"{}"}',field-path=embedding
+```
+
+  인덱스가 없는 동안에는 `FAILED_PRECONDITION` 이 나고 `api/feedback.js` 가 자동으로
+  파일 검색(예전 방식)으로 폴백합니다. `GET /api/feedback` 의 `source.chunks` 가
+  `firestore` 면 벡터 검색이 살아 있는 것입니다.
 
 ---
 
