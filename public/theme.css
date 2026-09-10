@@ -1,0 +1,141 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   theme.css — 퍼스널메이커스 AI 공통 테마 (블루 · 라이트 · 심플)
+   index.html(코치 화면)의 팔레트를 기준으로 관리 화면(플레이북·설정·지식베이스·
+   멤버십)을 맞춘다. 각 페이지의 <style> 뒤에 로드해 토큰과 공통 컴포넌트를 덮어쓴다.
+   ───────────────────────────────────────────────────────────────────────────── */
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --paper: #ffffff; --surface: #ffffff;
+  --border: #e5e8ee; --border-dark: #d3d8e2;
+  --ink: #1a1d23; --ink-mid: #4a5160; --ink-light: #8a91a0; --ink-soft: #8a91a0;
+  --accent: #2f6bff; --accent-hover: #2358e0; --accent-soft: #eef3ff; --accent-border: #c9d8ff;
+  --warm-dark: #ffffff;                 /* 예전 갈색 헤더 자리 — 이제 흰 헤더 */
+  --ok: #1a9a55; --ok-soft: #e7f6ed; --ok-border: #bfe6cf;
+  --warn: #b7791f; --warn-soft: #fff5e0;
+  --danger: #d0453d; --danger-soft: #fdeceb;
+  --success: #1a9a55;
+  --r: 10px;
+  --font: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo', sans-serif;
+  --serif: var(--font);                 /* 세리프 제목을 쓰지 않는다 — 심플하게 */
+  --mono: 'JetBrains Mono', ui-monospace, monospace;
+  --shadow: 0 1px 2px rgba(16, 24, 40, .04), 0 4px 16px rgba(16, 24, 40, .04);
+}
+body { background: var(--bg); color: var(--ink); font-family: var(--font); }
+#pwGate { background: var(--bg); }
+
+/* ─── 헤더: 흰 바탕 + 아래 선 (코치 화면과 동일) ─── */
+.header { background: var(--panel); border-bottom: 1px solid var(--border); padding: 12px 24px;
+  position: sticky; top: 0; z-index: 50; gap: 12px; }
+.header-avatar { width: 30px; height: 30px; border-radius: 8px; background: var(--accent-soft);
+  color: var(--accent); font-size: 14px; }
+.header-name { color: var(--ink); font-size: 14.5px; font-weight: 700; letter-spacing: -.2px; font-family: var(--font); }
+.header-sub { color: var(--ink-light); font-size: 11px; font-family: var(--font); }
+.header a.home { color: var(--ink-mid); border: 1px solid var(--border); background: var(--panel);
+  border-radius: 8px; padding: 6px 12px; font-size: 12px; font-weight: 600; }
+.header a.home:hover { color: var(--accent); border-color: var(--accent); }
+.header-badge { background: var(--accent-soft); border: 1px solid var(--accent-border); color: var(--accent); }
+
+/* ─── 페이지 머리말 ─── */
+.wrap { max-width: 1180px; }
+.intro h1 { font-family: var(--font); font-size: 20px; font-weight: 800; letter-spacing: -.3px; }
+.intro p { color: var(--ink-mid); }
+.intro .hint { color: var(--ink-light); }
+
+/* ─── 툴바 · 필터 칩 · 검색 · 버튼 ─── */
+.tab { border: 1px solid var(--border); background: var(--panel); color: var(--ink-mid);
+  border-radius: 8px; padding: 6px 11px; font-size: 12px; font-weight: 600; transition: all .12s; }
+.tab:hover { border-color: var(--accent-border); color: var(--accent); }
+.tab.on { background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent); }
+.tab .n { opacity: .7; font-weight: 700; }
+.search, select.search { border: 1px solid var(--border); border-radius: 8px; background: var(--panel); font-size: 12.5px; }
+.search:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(47, 107, 255, .12); }
+.btn { border-radius: 8px; font-weight: 600; transition: all .12s; }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+.btn-ghost { background: var(--panel); border: 1px solid var(--border); color: var(--ink-mid); }
+.btn-ghost:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.btn-ok { background: var(--ok); color: #fff; }
+.btn-ok:hover:not(:disabled) { background: #15834a; }
+.btn-danger { background: none; border: 1px solid var(--border); color: var(--danger); }
+.btn-danger:hover:not(:disabled) { border-color: var(--danger); background: var(--danger-soft); }
+.mine, .sw { color: var(--ink-mid); }
+.mine input, .sw input { accent-color: var(--accent); }
+
+/* ─── 표 (플레이북 · 사례 · 지식베이스) ─── */
+.list { border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); background: var(--panel); }
+.row, .crow { padding: 12px 16px; border-bottom: 1px solid var(--border); }
+.row:hover, .crow:hover { background: #f9fafc; }
+.row.head, .crow.head { background: #fafbfd; color: var(--ink-light); font-size: 11px; font-weight: 700;
+  letter-spacing: .2px; text-transform: none; }
+.row.head:hover, .crow.head:hover { background: #fafbfd; }
+.q, .nm, .crow .s { font-size: 13px; font-weight: 600; color: var(--ink); }
+.q .sub, .nm .sub, .crow .s small { color: var(--ink-light); font-weight: 400; }
+.cell { color: var(--ink-mid); font-size: 12px; }
+.empty { color: var(--ink-light); }
+
+/* 상태 알약: 기준 화면의 Good/Bad 처럼 은은한 바탕 + 진한 글자 */
+.pill { border-radius: 6px; font-size: 11px; font-weight: 700; padding: 3px 8px; }
+.st-승인 { background: var(--ok-soft); color: var(--ok); }
+.st-답변작성 { background: var(--accent-soft); color: var(--accent); }
+.st-대기 { background: var(--warn-soft); color: var(--warn); }
+.st-보류 { background: #f0f2f5; color: var(--ink-mid); }
+.st-자동기록 { background: #f0f2f5; color: var(--ink-light); }
+.cat { background: #f0f2f5; color: var(--ink-mid); border: 0; }
+.pill.rate { background: var(--danger-soft); color: var(--danger); border: 0; }
+.t-youtube { background: var(--danger-soft); color: var(--danger); }
+.t-consulting { background: var(--ok-soft); color: var(--ok); }
+.t-book, .t-ebook { background: var(--accent-soft); color: var(--accent); }
+.t-faq, .t-notion_page, .t-other { background: #f0f2f5; color: var(--ink-mid); }
+.has { color: var(--ok); } .none { color: var(--danger); }
+
+/* ─── 모달 · 폼 ─── */
+.back { background: rgba(26, 29, 35, .45); }
+.modal { border-radius: 14px; box-shadow: 0 24px 70px rgba(16, 24, 40, .22); }
+.modal-head h3 { font-family: var(--font); font-weight: 700; }
+.field label { color: var(--ink-mid); letter-spacing: 0; }
+.field label .req { color: var(--accent); }
+.field input, .field select, .field textarea, .card textarea, .pmnick {
+  border: 1px solid var(--border); background: var(--panel); border-radius: 8px; }
+.field input:focus, .field select:focus, .field textarea:focus, .card textarea:focus {
+  border-color: var(--accent); box-shadow: 0 0 0 3px rgba(47, 107, 255, .12); background: var(--panel); }
+.msg.err { color: var(--danger); } .msg.ok { color: var(--ok); }
+.locked { background: var(--ok-soft); border: 1px solid var(--ok-border); color: #146c3f; }
+.tip, .note { background: var(--accent-soft); border: 1px solid var(--accent-border); color: #2a4a8f; }
+.script, .ev-row pre { background: var(--bg); border: 1px solid var(--border); }
+
+/* 통계 카드 */
+.stat { border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); }
+.stat .k { color: var(--ink-light); letter-spacing: 0; }
+.stat .v { font-family: var(--font); font-weight: 800; letter-spacing: -.4px; }
+
+/* 설정 하위 내비 · 카드 */
+.subnav a { border-radius: 8px; border: 1px solid var(--border); background: var(--panel); color: var(--ink-mid); }
+.subnav a.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.subnav a:hover:not(.on) { border-color: var(--accent); color: var(--accent); }
+.card { border: 1px solid var(--border); box-shadow: var(--shadow); }
+.card-head .ord { font-family: var(--font); color: var(--accent); font-weight: 800; }
+.card textarea.dirty { border-color: var(--accent); }
+.preview { background: #1a1d23; color: #e5e8ee; }
+.section-title { font-family: var(--font); font-weight: 800; font-size: 16px; }
+.sc5, .sc4 { background: var(--ok-soft); color: var(--ok); }
+.sc3 { background: var(--warn-soft); color: var(--warn); }
+.sc2, .sc1, .sc0 { background: var(--danger-soft); color: var(--danger); }
+
+/* ─── 멤버십 화면 (member.html): 어두운 히어로 → 흰 바탕 ─── */
+.intro.hero, body.member .intro { background: var(--panel); }
+body.member .header { justify-content: space-between; }
+body.member .header-name { color: var(--ink); }
+body.member .intro { border-bottom: 1px solid var(--border); padding: 8px 32px 32px; }
+body.member .intro h1 { color: var(--ink); font-size: 24px; }
+body.member .intro p { color: var(--ink-mid); }
+body.member .cat-pill { border: 1px solid var(--border); background: var(--panel); color: var(--ink-mid); }
+body.member .cat-pill:hover { border-color: var(--accent-border); color: var(--accent); background: var(--accent-soft); }
+body.member .cat-pill.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+body.member .submit-btn { font-family: var(--font); font-weight: 700; border-radius: 8px; }
+body.member .submit-btn:hover:not(:disabled) { background: var(--accent-hover); box-shadow: 0 4px 16px rgba(47, 107, 255, .25); }
+body.member .fb-avatar, body.member .header-avatar { background: var(--accent-soft); color: var(--accent); }
+body.member .fb-body { font-size: 14px; }
+body.member .input-cat-badge { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-border); font-family: var(--font); }
+body.member .mode-btn.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+body.member textarea.q-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(47, 107, 255, .12); }
+body.member .pw-box { background: var(--panel); border-color: var(--border); }
+body.member .pw-title { color: var(--ink); font-family: var(--font); }

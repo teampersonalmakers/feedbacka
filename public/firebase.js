@@ -51,65 +51,66 @@ function injectStyles() {
   const s = document.createElement('style');
   s.id = 'pmauth-style';
   s.textContent = `
-.pmauth { background:#262320; border:1px solid #3a3530; border-radius:16px;
+.pmauth { background:#fff; border:1px solid #e5e8ee; border-radius:16px;
   padding:34px 32px; width:min(360px,calc(100vw - 40px)); text-align:center;
-  font-family:'Pretendard','Apple SD Gothic Neo',system-ui,sans-serif;
-  box-shadow:0 20px 60px rgba(0,0,0,.35); }
-.pmauth h2 { color:#f0ede8; font-size:17px; margin:0 0 6px; font-weight:700; letter-spacing:-.2px; }
-.pmauth p { color:#8a857e; font-size:12.5px; margin:0 0 20px; line-height:1.65; }
+  font-family:'Pretendard',-apple-system,BlinkMacSystemFont,'Segoe UI','Apple SD Gothic Neo',sans-serif;
+  box-shadow:0 12px 40px rgba(16,24,40,.10); }
+.pmauth h2 { color:#1a1d23; font-size:17px; margin:0 0 6px; font-weight:800; letter-spacing:-.2px; }
+.pmauth p { color:#4a5160; font-size:12.5px; margin:0 0 20px; line-height:1.65; }
 .pmauth-btn { width:100%; border:0; border-radius:10px; padding:12px;
   font-size:13.5px; font-weight:700; cursor:pointer; font-family:inherit;
-  display:flex; align-items:center; justify-content:center; gap:9px; transition:opacity .15s; }
+  display:flex; align-items:center; justify-content:center; gap:9px; transition:all .15s; }
 .pmauth-btn:disabled { opacity:.5; cursor:not-allowed; }
-.pmauth-google { background:#fff; color:#1f1d1a; }
-.pmauth-google:hover:not(:disabled) { opacity:.9; }
-.pmauth-ghost { background:none; color:#8a857e; border:1px solid #3a3530; margin-top:10px; }
-.pmauth-ghost:hover:not(:disabled) { color:#c8622a; border-color:#c8622a; }
-.pmauth-input { width:100%; border:1px solid #3a3530; background:#1c1a17; color:#f0ede8;
+.pmauth-google { background:#2f6bff; color:#fff; }
+.pmauth-google:hover:not(:disabled) { background:#2358e0; }
+.pmauth-ghost { background:none; color:#4a5160; border:1px solid #e5e8ee; margin-top:10px; }
+.pmauth-ghost:hover:not(:disabled) { color:#2f6bff; border-color:#2f6bff; }
+.pmauth-input { width:100%; border:1px solid #e5e8ee; background:#fff; color:#1a1d23;
   border-radius:10px; padding:12px 14px; font-size:14.5px; text-align:center;
   font-family:inherit; margin-bottom:12px; box-sizing:border-box; }
-.pmauth-input:focus { outline:none; border-color:#c8622a; }
+.pmauth-input:focus { outline:none; border-color:#2f6bff; box-shadow:0 0 0 3px rgba(47,107,255,.12); }
 .pmauth-msg { font-size:11.5px; min-height:16px; margin-top:10px; line-height:1.5; }
-.pmauth-err { color:#e07b6f; }
-.pmauth-ok { color:#8a857e; }
-.pmauth-who { color:#6f6a63; font-size:11px; margin-top:14px; word-break:break-all; }
+.pmauth-err { color:#d0453d; }
+.pmauth-ok { color:#8a91a0; }
+.pmauth-who { color:#8a91a0; font-size:11px; margin-top:14px; word-break:break-all; }
 
-.pmmenu { position:absolute; z-index:99997; min-width:220px; background:#262320; border:1px solid #3a3530;
-  border-radius:12px; padding:6px; box-shadow:0 18px 50px rgba(0,0,0,.4);
-  font-family:'Pretendard','Apple SD Gothic Neo',system-ui,sans-serif; }
-.pmmenu .who { padding:8px 10px 10px; border-bottom:1px solid #3a3530; margin-bottom:4px; }
-.pmmenu .who b { display:block; color:#f0ede8; font-size:13px; }
-.pmmenu .who span { display:block; color:#8a857e; font-size:11px; margin-top:2px; word-break:break-all; }
+.pmmenu { position:absolute; z-index:99997; min-width:230px; background:#fff; border:1px solid #e5e8ee;
+  border-radius:12px; padding:6px; box-shadow:0 12px 40px rgba(16,24,40,.14);
+  font-family:'Pretendard',-apple-system,BlinkMacSystemFont,'Segoe UI','Apple SD Gothic Neo',sans-serif; }
+.pmmenu .who { padding:8px 10px 10px; border-bottom:1px solid #e5e8ee; margin-bottom:4px; }
+.pmmenu .who b { display:block; color:#1a1d23; font-size:13px; }
+.pmmenu .who span { display:block; color:#8a91a0; font-size:11px; margin-top:2px; word-break:break-all; }
 .pmmenu button, .pmmenu a { display:flex; align-items:center; gap:8px; width:100%; text-align:left; border:0; background:transparent;
-  color:#e6e1d8; font-size:13px; padding:9px 10px; border-radius:8px; cursor:pointer; font-family:inherit; text-decoration:none; }
-.pmmenu button:hover, .pmmenu a:hover { background:rgba(255,255,255,.07); }
-.pmmenu .danger { color:#ff9a8a; }
-.pmadmin input.pmnick { width:100%; box-sizing:border-box; background:#1c1a17; border:1px solid #3a3530; border-radius:10px;
-  padding:12px 14px; color:#f5f0e8; font-size:15px; font-family:inherit; outline:none; }
-.pmadmin input.pmnick:focus { border-color:#c8622a; }
-.pmadmin-back { position:fixed; inset:0; z-index:99998; background:rgba(20,18,16,.62);
+  color:#1a1d23; font-size:13px; padding:9px 10px; border-radius:8px; cursor:pointer; font-family:inherit; text-decoration:none; }
+.pmmenu button:hover, .pmmenu a:hover { background:#eef3ff; color:#2f6bff; }
+.pmmenu .danger { color:#d0453d; }
+.pmmenu .danger:hover { background:#fdeceb; color:#d0453d; }
+.pmadmin input.pmnick { width:100%; box-sizing:border-box; background:#fff; border:1px solid #e5e8ee; border-radius:10px;
+  padding:12px 14px; color:#1a1d23; font-size:15px; font-family:inherit; outline:none; }
+.pmadmin input.pmnick:focus { border-color:#2f6bff; box-shadow:0 0 0 3px rgba(47,107,255,.12); }
+.pmadmin-back { position:fixed; inset:0; z-index:99998; background:rgba(26,29,35,.45);
   display:flex; align-items:center; justify-content:center; padding:20px; }
-.pmadmin { background:#262320; border:1px solid #3a3530; border-radius:16px;
+.pmadmin { background:#fff; border:1px solid #e5e8ee; border-radius:16px;
   width:min(430px,100%); max-height:82vh; overflow:auto; padding:26px 24px;
-  font-family:'Pretendard','Apple SD Gothic Neo',system-ui,sans-serif;
-  box-shadow:0 24px 70px rgba(0,0,0,.45); }
-.pmadmin h3 { color:#f0ede8; font-size:15.5px; margin:0 0 4px; font-weight:700; }
-.pmadmin .sub { color:#8a857e; font-size:12px; margin:0 0 18px; line-height:1.6; }
+  font-family:'Pretendard',-apple-system,BlinkMacSystemFont,'Segoe UI','Apple SD Gothic Neo',sans-serif;
+  box-shadow:0 24px 70px rgba(16,24,40,.22); }
+.pmadmin h3 { color:#1a1d23; font-size:15.5px; margin:0 0 4px; font-weight:800; }
+.pmadmin .sub { color:#4a5160; font-size:12px; margin:0 0 18px; line-height:1.6; }
 .pmadmin-row { display:flex; align-items:center; gap:8px; padding:9px 10px;
-  border:1px solid #3a3530; border-radius:9px; margin-bottom:6px; }
-.pmadmin-row .nm { color:#f0ede8; font-size:12.5px; font-weight:600; flex-shrink:0; }
-.pmadmin-row .em { color:#8a857e; font-size:11px; flex:1; overflow:hidden;
+  border:1px solid #e5e8ee; border-radius:9px; margin-bottom:6px; }
+.pmadmin-row .nm { color:#1a1d23; font-size:12.5px; font-weight:600; flex-shrink:0; }
+.pmadmin-row .em { color:#8a91a0; font-size:11px; flex:1; overflow:hidden;
   text-overflow:ellipsis; white-space:nowrap; }
-.pmadmin-row .tag { font-size:9.5px; font-weight:700; color:#c8622a;
-  background:rgba(200,98,42,.15); border-radius:4px; padding:2px 6px; flex-shrink:0; }
-.pmadmin-row .del { background:none; border:0; color:#6f6a63; cursor:pointer;
+.pmadmin-row .tag { font-size:9.5px; font-weight:700; color:#2f6bff;
+  background:#eef3ff; border-radius:4px; padding:2px 6px; flex-shrink:0; }
+.pmadmin-row .del { background:none; border:0; color:#8a91a0; cursor:pointer;
   font-size:13px; padding:2px 4px; flex-shrink:0; }
-.pmadmin-row .del:hover { color:#e07b6f; }
+.pmadmin-row .del:hover { color:#d0453d; }
 .pmadmin-grid { display:grid; grid-template-columns:1fr 110px; gap:8px; margin-top:14px; }
-.pmadmin input { border:1px solid #3a3530; background:#1c1a17; color:#f0ede8;
+.pmadmin input { border:1px solid #e5e8ee; background:#fff; color:#1a1d23;
   border-radius:9px; padding:10px 12px; font-size:13px; font-family:inherit;
   width:100%; box-sizing:border-box; }
-.pmadmin input:focus { outline:none; border-color:#c8622a; }
+.pmadmin input:focus { outline:none; border-color:#2f6bff; box-shadow:0 0 0 3px rgba(47,107,255,.12); }
 `;
   document.head.appendChild(s);
 }
@@ -622,7 +623,7 @@ function gateFatal(detail) {
       <div class="pmadmin">
         <h3>디렉터 관리</h3>
         <p class="sub">등록된 구글 계정만 이 앱에 로그인할 수 있습니다.</p>
-        <div id="pmadminList" style="color:#8a857e;font-size:12px">불러오는 중…</div>
+        <div id="pmadminList" style="color:#8a91a0;font-size:12px">불러오는 중…</div>
         <div class="pmadmin-grid">
           <input id="pmadminEmail" type="email" placeholder="구글 계정 이메일" autocomplete="off">
           <input id="pmadminName" maxlength="30" placeholder="이름">
@@ -710,8 +711,8 @@ function gateFatal(detail) {
       nav.textContent = l.label;
       nav.style.cssText =
         (first ? 'margin-left:auto;' : '') +
-        'background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);' +
-        'color:inherit;opacity:.85;border-radius:20px;padding:5px 12px;font-size:11.5px;font-weight:700;' +
+        'background:#fff;border:1px solid #e5e8ee;' +
+        'color:#4a5160;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:600;' +
         'cursor:pointer;font-family:inherit;white-space:nowrap;text-decoration:none;margin-right:8px;';
       host.appendChild(nav);
       first = false;
@@ -721,8 +722,8 @@ function gateFatal(detail) {
     b.type = 'button';
     b.style.cssText =
       (document.getElementById('pmNavPlaybook') || document.getElementById('pmNavInsight') ? '' : 'margin-left:auto;') +
-      'background:rgba(200,98,42,.14);border:1px solid rgba(200,98,42,.35);' +
-      'color:#c8622a;border-radius:20px;padding:5px 12px;font-size:11.5px;font-weight:700;' +
+      'background:#eef3ff;border:1px solid #c9d8ff;' +
+      'color:#2f6bff;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;' +
       'cursor:pointer;font-family:inherit;white-space:nowrap;';
     const paint = () => { b.textContent = '👤 ' + (api.profile.nickname || '닉네임 설정'); };
     paint();

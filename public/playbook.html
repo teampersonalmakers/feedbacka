@@ -79,7 +79,7 @@ body { background: var(--bg); color: var(--ink); font-family: var(--font); min-h
 /* ─── List ─── */
 .list { background: var(--paper); border: 1px solid var(--border); border-radius: 12px;
   overflow: hidden; box-shadow: var(--shadow); }
-.row { display: grid; grid-template-columns: 1fr 150px 108px 92px 96px;
+.row { display: grid; grid-template-columns: 1fr 150px 96px 92px 88px 72px;
   gap: 12px; padding: 13px 16px; border-bottom: 1px solid var(--border);
   align-items: center; cursor: pointer; }
 .row:last-child { border-bottom: 0; }
@@ -130,11 +130,12 @@ body { background: var(--bg); color: var(--ink); font-family: var(--font); min-h
   padding: 11px 13px; font-size: 12px; color: var(--ok); line-height: 1.6; }
 
 @media (max-width: 820px) {
-  .row { grid-template-columns: 1fr 92px; gap: 8px; }
+  .row { grid-template-columns: 1fr 80px; gap: 8px; }
   .row .hide-sm { display: none; }
   .two { grid-template-columns: 1fr; }
 }
 </style>
+<link rel="stylesheet" href="/theme.css" />
 </head>
 <body>
 
@@ -156,7 +157,7 @@ body { background: var(--bg); color: var(--ink); font-family: var(--font); min-h
   <div class="intro">
     <h1>디렉터가 쌓고, 커밍쏜이 승인합니다</h1>
     <p>수강생에게 받은 질문과 답변을 여기에 기록하세요. 커밍쏜이 검수해 <b>승인</b>하면 AI 피드백에 반영됩니다.</p>
-    <p class="hint">승인된 Q&amp;A만 AI가 참고합니다 · 반영까지 최대 5분</p>
+    <p class="hint">승인된 Q&amp;A만 AI가 참고합니다 · 저장 후 5분 안에 반영</p>
   </div>
 
   <div class="toolbar">
@@ -194,6 +195,11 @@ var mineOnly = false;
 var editing = null;   // 편집 중인 행 (null 이면 새 항목)
 
 function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
+function shortDate(ts) {
+  if (!ts) return '';
+  var d = new Date(ts); if (isNaN(d)) return '';
+  return String(d.getFullYear()).slice(2) + '.' + String(d.getMonth() + 1).padStart(2, '0') + '.' + String(d.getDate()).padStart(2, '0');
+}
 function isAdmin() { return !!(window.PMFire && window.PMFire.isAdmin()); }
 
 // ─── 목록 ───────────────────────────────────────────────────────────────────
@@ -229,13 +235,13 @@ function renderTabs() {
 
 function renderList() {
   var el = document.getElementById('list');
-  var list = visible();
+  var list = visible().slice().sort(function(a, b) { return (b.updatedAtMs || b.createdAt || 0) - (a.updatedAtMs || a.createdAt || 0); });
   el.innerHTML = '';
 
   var head = document.createElement('div');
   head.className = 'row head';
   head.innerHTML = '<div>질문</div><div class="hide-sm">카테고리</div>' +
-    '<div class="hide-sm">디렉터</div><div class="hide-sm">수강생</div><div>상태</div>';
+    '<div class="hide-sm">디렉터</div><div class="hide-sm">수강생</div><div>상태</div><div class="hide-sm">날짜</div>';
   el.appendChild(head);
 
   if (!list.length) {
@@ -259,7 +265,8 @@ function renderList() {
       '<div class="cell hide-sm">' + (r.category ? '<span class="pill cat">' + esc(r.category) + '</span>' : '') + '</div>' +
       '<div class="cell hide-sm">' + esc(r.director || '') + '</div>' +
       '<div class="cell hide-sm">' + esc(r.student || '') + '</div>' +
-      '<div><span class="pill st-' + esc(r.status || '대기') + '">' + esc(r.status || '대기') + '</span></div>';
+      '<div><span class="pill st-' + esc(r.status || '대기') + '">' + esc(r.status || '대기') + '</span></div>' +
+      '<div class="cell hide-sm">' + esc(shortDate(r.updatedAtMs || r.createdAt)) + '</div>';
     el.appendChild(d);
   });
 }
