@@ -231,7 +231,7 @@ gcloud firestore indexes composite create --project=personalmakers-ai \
 
 비밀번호 게이트(`0630` / `0730`)는 **제거**했습니다. 소스만 보면 뚫리는 구조였습니다.
 
-이제 **5개 페이지 전부**(`index` / `chat` / `classic` / `creator` / `member`)가
+이제 **모든 페이지**(`index` / `chat` / `classic` / `creator` / `playbook` / `settings` / `insight`)가
 구글 로그인을 거치고, `directors/{이메일}` 문서가 있는 계정만 통과합니다.
 화이트리스트는 보안 규칙에서 클라이언트 쓰기가 **전면 차단**돼 있어 아무나
 가입할 수 없습니다.
