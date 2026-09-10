@@ -716,8 +716,8 @@ document.addEventListener('drop', function(e) {
       // 클라우드에만 있는 대화 → 목록에 추가 (turns 는 열 때 로드)
       remote.forEach(function(r) {
         var c = localById[r.id];
-        if (!c) { convs.push({ id: r.id, title: r.title, student: r.student, ts: r.ts, turnCount: r.turnCount }); }
-        else { c._syncedUpTo = c._syncedUpTo || r.turnCount || 0; if (r.ts > (c.ts || 0)) { c.title = r.title || c.title; c.student = r.student || c.student; c.ts = r.ts; } }
+        if (!c) { convs.push({ id: r.id, title: r.title, student: r.student, cohort: r.cohort || '', ts: r.ts, turnCount: r.turnCount }); }
+        else { c._syncedUpTo = c._syncedUpTo || r.turnCount || 0; if (r.ts > (c.ts || 0)) { c.title = r.title || c.title; c.student = r.student || c.student; c.cohort = r.cohort || c.cohort; c.ts = r.ts; } }
       });
 
       convs.sort(function(a, b) { return (b.ts || 0) - (a.ts || 0); });
