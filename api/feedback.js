@@ -9,6 +9,7 @@ import {
   firestoreEnabled,
   addMetrics,
 } from './_firestore.js';
+import { claudeHeaders, claudeBody, cachedBlock, pickText } from './_claude.js';
 
 // 이 인스턴스가 첫 요청을 받는 중인지. 콜드스타트 지연을 따로 보기 위해서다.
 let _coldInstance = true;
@@ -437,12 +438,12 @@ ${outputList.includes('썸네일 아이디어') ? `## 🖼 썸네일 아이디�
     try {
       const response = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': CLAUDE_KEY, 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 4000, system: creatorSystem, messages: [{ role: 'user', content: creatorPrompt }] }),
+        headers: claudeHeaders(CLAUDE_KEY),
+        body: claudeBody(creatorSystem, creatorPrompt, { maxTokens: 8000, effort: 'medium' }),
       });
       const data = await response.json();
       if (data.error) throw new Error('Claude: ' + data.error.message);
-      return res.status(200).json({ feedback: data.content[0].text, sources: hits });
+      return res.status(200).json({ feedback: pickText(data), sources: hits });
     } catch(e) {
       return res.status(500).json({ error: e.message });
     }
@@ -492,7 +493,9 @@ ${outputList.includes('썸네일 아이디어') ? `## 🖼 썸네일 아이디�
   const freeGuidelines = g.freeGuidelines ? `\n[추가 지침]\n${g.freeGuidelines}` : '';
   const personaBase = g.persona || '당신은 커밍쏜입니다. 유튜브 채널 성장과 콘텐츠 브랜딩 전문가입니다.';
 
-  const casesStr = relevantCases.length > 0
+  // 사례는 질문마다 달라진다. 시스템 프롬프트에 두면 캐시 프리픽스가 매번 깨지므로
+  // 참고 자료와 함께 user 턴에 넣는다.
+  const casesBlock = relevantCases.length > 0
     ? '\n\n[커밍쏜 디렉팅 사례 — 실제 컨설팅에서 나온 판단 기준]\n' +
       relevantCases.map((c, i) =>
         `사례 ${i + 1}. ${c.summary}${c.cohort ? ` (${c.cohort})` : ''}\n${String(c.body).slice(0, 1500)}`
@@ -504,15 +507,18 @@ ${outputList.includes('썸네일 아이디어') ? `## 🖼 썸네일 아이디�
       playbook.map((p, i) => `Q${i+1}. [${p.category}] ${p.q}\nA${i+1}. ${p.answer}`).join('\n\n')
     : '';
 
-  let SYSTEM_PROMPT = `${personaBase}
+  // ── 시스템 프롬프트: [고정] + [가변] ──────────────────────────────────────
+  // 고정 블록 = 지침·플레이북. 5분 캐시로 갱신되는 동안 모든 요청에 똑같다 → 프롬프트 캐시.
+  // 가변 블록 = 카테고리 지침·모드·대화 지침. 요청마다 달라서 캐시 경계 뒤에 둔다.
+  const STABLE_SYSTEM = `${personaBase}
 
 [핵심 철학]
 ${corePhilosophy}
 
 [말투와 스타일]
-${toneGuide}${categoryRules}${freeGuidelines}${doNotDo}${casesStr}${playbookStr}
+${toneGuide}${freeGuidelines}${doNotDo}${playbookStr}`;
 
-당신의 과거 콘텐츠, 강의, 컨설팅 자료를 참고하여 답변하세요.
+  let VARIABLE_SYSTEM = `${categoryRules ? categoryRules.replace(/^\n/, '') + '\n\n' : ''}당신의 과거 콘텐츠, 강의, 컨설팅 자료를 참고하여 답변하세요.
 ${isPublic
   ? '지금 대화하는 상대는 멤버십 회원입니다. 1:1 코칭을 받는 것처럼 따뜻하지만 솔직하게 대화하세요.'
   : '디렉터가 수강생 미션을 검토하는 상황입니다. 커밍쏜의 관점으로 피드백 방향을 제시해주세요.'}`;
@@ -527,26 +533,27 @@ ${isPublic
   let userPrompt;
   if (isPublic) {
     userPrompt = mode === 'structured'
-      ? `[${categoryLabel}] 질문입니다.\n\n${question}\n\n---\n\n[참고 자료]\n${contextStr}\n\n---\n\n아래 형식으로 답변해주세요:\n\n[핵심 답변]\n(가장 중요한 포인트)\n\n[구체적으로 이렇게 해보세요]\n(실행 가능한 액션 2~3가지)\n\n[한마디]\n(철학이 담긴 한 문장으로 마무리)`
-      : `[${categoryLabel}] 질문입니다.\n\n${question}\n\n---\n\n[참고 자료]\n${contextStr}\n\n---\n\n커밍쏜이 직접 대화하듯 구어체로 답변해주세요. 질문자의 상황을 먼저 이해하고, 핵심을 짚은 뒤, 다음 스텝으로 마무리. 300~500자 내외.`;
+      ? `[${categoryLabel}] 질문입니다.\n\n${question}\n\n---\n\n[참고 자료]\n${contextStr}${casesBlock}\n\n---\n\n아래 형식으로 답변해주세요:\n\n[핵심 답변]\n(가장 중요한 포인트)\n\n[구체적으로 이렇게 해보세요]\n(실행 가능한 액션 2~3가지)\n\n[한마디]\n(철학이 담긴 한 문장으로 마무리)`
+      : `[${categoryLabel}] 질문입니다.\n\n${question}\n\n---\n\n[참고 자료]\n${contextStr}${casesBlock}\n\n---\n\n커밍쏜이 직접 대화하듯 구어체로 답변해주세요. 질문자의 상황을 먼저 이해하고, 핵심을 짚은 뒤, 다음 스텝으로 마무리. 300~500자 내외.`;
   } else {
     userPrompt = mode === 'structured'
-      ? `${studentName || '수강생'}의 [${categoryLabel}] 미션입니다.${extraContext ? `\n\n[디렉터 메모]\n${extraContext}` : ''}\n\n[제출 내용]\n${question}\n\n---\n\n[참고 자료]\n${contextStr}\n\n---\n\n[✅ 잘 잡고 있는 방향]\n(2가지, 이유 포함)\n\n[🔧 더 디깅이 필요한 부분]\n(2~3가지)\n\n[💡 다음 스텝]\n(실행 가능한 액션 2~3가지)`
-      : `${studentName || '수강생'}의 [${categoryLabel}] 미션입니다.${extraContext ? `\n\n[디렉터 메모]\n${extraContext}` : ''}\n\n[제출 내용]\n${question}\n\n---\n\n[참고 자료]\n${contextStr}\n\n---\n\n커밍쏜이 직접 말해주듯 구어체로 피드백을 작성해주세요. Why와 서사를 먼저 짚고, 핵심 방향을 제시하고, 실행 가능한 다음 스텝으로 마무리. 400~600자 내외.`;
+      ? `${studentName || '수강생'}의 [${categoryLabel}] 미션입니다.${extraContext ? `\n\n[디렉터 메모]\n${extraContext}` : ''}\n\n[제출 내용]\n${question}\n\n---\n\n[참고 자료]\n${contextStr}${casesBlock}\n\n---\n\n[✅ 잘 잡고 있는 방향]\n(2가지, 이유 포함)\n\n[🔧 더 디깅이 필요한 부분]\n(2~3가지)\n\n[💡 다음 스텝]\n(실행 가능한 액션 2~3가지)`
+      : `${studentName || '수강생'}의 [${categoryLabel}] 미션입니다.${extraContext ? `\n\n[디렉터 메모]\n${extraContext}` : ''}\n\n[제출 내용]\n${question}\n\n---\n\n[참고 자료]\n${contextStr}${casesBlock}\n\n---\n\n커밍쏜이 직접 말해주듯 구어체로 피드백을 작성해주세요. Why와 서사를 먼저 짚고, 핵심 방향을 제시하고, 실행 가능한 다음 스텝으로 마무리. 400~600자 내외.`;
   }
 
   try {
     // ─── 대화(챗) 모드: 형식 제약 해제 + 커밍쏜 대화 원칙 ───
     if (req.body && req.body.chat) {
-      SYSTEM_PROMPT += '\n\n[대화 모드 지침 — 위의 출력 형식·분량 지시보다 우선]\n지금은 디렉터와 실시간 채팅 중이다.\n- 대화 흐름에 맞는 자연스러운 길이로 답한다. 간단한 질문엔 간결하게, 로드맵 점검이나 기획 요청엔 깊이 있게.\n- 커밍쏜의 코칭 방식을 따른다: 1) 잘한 점을 인정하되 핵심 문제를 정면으로 짚는다 2) 왜?를 파고든다 — 결핍이 모호하면 메시지도 타겟도 흔들린다 3) 소재는 대중성으로, 차별화는 메시지·페르소나·라이프스타일로 만든다 4) 수익 불안 때문에 방향을 바꾸려는 패턴을 경계시킨다 5) 마지막엔 실행 가능한 다음 스텝을 제시한다.\n- 판단에 필요한 정보가 부족하면 먼저 되묻는다. 근거 없는 확신 대신 참고 자료와 과거 사례에 기반해 말한다.\n- 아이디어 제안 요청에는 구체적 예시(제목·훅·콘텐츠 구조)까지 낸다.\n- 참고 자료에 관련 사례가 있으면 자연스럽게 인용한다.';
-      userPrompt = (extraContext ? '[맥락 정보]\n' + extraContext + '\n\n' : '') + '[참고 자료]\n' + contextStr + '\n\n---\n\n디렉터의 메시지: ' + question;
+      VARIABLE_SYSTEM += '\n\n[대화 모드 지침 — 위의 출력 형식·분량 지시보다 우선]\n지금은 디렉터와 실시간 채팅 중이다. 답변은 바로 시작한다 — 첫 문장부터 먼저 낸다.\n- 대화 흐름에 맞는 자연스러운 길이로 답한다. 간단한 질문엔 간결하게, 로드맵 점검이나 기획 요청엔 깊이 있게.\n- 커밍쏜의 코칭 방식을 따른다: 1) 잘한 점을 인정하되 핵심 문제를 정면으로 짚는다 2) 왜?를 파고든다 — 결핍이 모호하면 메시지도 타겟도 흔들린다 3) 소재는 대중성으로, 차별화는 메시지·페르소나·라이프스타일로 만든다 4) 수익 불안 때문에 방향을 바꾸려는 패턴을 경계시킨다 5) 마지막엔 실행 가능한 다음 스텝을 제시한다.\n- 판단에 필요한 정보가 부족하면 먼저 되묻는다. 근거 없는 확신 대신 참고 자료와 과거 사례에 기반해 말한다.\n- 아이디어 제안 요청에는 구체적 예시(제목·훅·콘텐츠 구조)까지 낸다.\n- 참고 자료에 관련 사례가 있으면 자연스럽게 인용한다.';
+      userPrompt = (extraContext ? '[맥락 정보]\n' + extraContext + '\n\n' : '') + '[참고 자료]\n' + contextStr + casesBlock + '\n\n---\n\n디렉터의 메시지: ' + question;
     }
 
     if (req.body && req.body.stream) {
+      const systemBlocks = [cachedBlock(STABLE_SYSTEM), { type: 'text', text: VARIABLE_SYSTEM }];
       const upstream = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': CLAUDE_KEY, 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 4000, stream: true, system: SYSTEM_PROMPT, messages: [{ role: 'user', content: userPrompt }] }),
+        headers: claudeHeaders(CLAUDE_KEY),
+        body: claudeBody(systemBlocks, userPrompt, { stream: true, maxTokens: 12000, effort: 'medium' }),
       });
       if (!upstream.ok || !upstream.body) {
         const errText = await upstream.text().catch(() => '');
@@ -600,19 +607,21 @@ ${isPublic
       return res.end();
     }
 
+    const systemBlocks = [cachedBlock(STABLE_SYSTEM), { type: 'text', text: VARIABLE_SYSTEM }];
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': CLAUDE_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 4000, system: SYSTEM_PROMPT, messages: [{ role: 'user', content: userPrompt }] }),
+      headers: claudeHeaders(CLAUDE_KEY),
+      body: claudeBody(systemBlocks, userPrompt, { maxTokens: 8000, effort: 'medium' }),
     });
     const data = await response.json();
     if (data.error) throw new Error('Claude: ' + data.error.message);
+    const text = pickText(data);
     const u = data.usage || {};
     M.model = data.model || '';
     M.usage = { input: u.input_tokens || 0, output: u.output_tokens || 0,
                 cacheRead: u.cache_read_input_tokens || 0, cacheWrite: u.cache_creation_input_tokens || 0 };
-    logMetrics({ ok: true, answerChars: (data.content[0].text || '').length });
-    return res.status(200).json({ feedback: data.content[0].text, sources: hits });
+    logMetrics({ ok: true, answerChars: text.length });
+    return res.status(200).json({ feedback: text, sources: hits });
   } catch(e) {
     logMetrics({ ok: false, error: e.message });
     return res.status(500).json({ error: e.message });

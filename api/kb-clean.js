@@ -8,6 +8,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { requireOwner } from './_auth.js';
+import { claudeHeaders, claudeBody, pickText } from './_claude.js';
 
 export const config = { maxDuration: 300 };
 
@@ -38,17 +39,13 @@ const SYSTEM = `당신은 한국어 유튜브 자막을 교정하는 편집자�
 async function clean(part, key) {
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 8000,
-      system: SYSTEM,
-      messages: [{ role: 'user', content: '다음 자막을 교정해주세요.\n\n' + part }],
-    }),
+    headers: claudeHeaders(key),
+    // 기계적인 교정 작업이라 effort 는 low 로 충분하다.
+    body: claudeBody(SYSTEM, '다음 자막을 교정해주세요.\n\n' + part, { maxTokens: 8000, effort: 'low' }),
   });
   const d = await r.json();
   if (!r.ok || d.error) throw new Error(d.error?.message || ('Claude ' + r.status));
-  return d.content?.[0]?.text || '';
+  return pickText(d);
 }
 
 export default async function handler(req, res) {
