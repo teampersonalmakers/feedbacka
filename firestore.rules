@@ -163,6 +163,7 @@ service cloud.firestore {
     match /cases/{id}      { allow read, write: if false; }
     match /ratings/{id}    { allow read, write: if false; }
     match /history/{id}    { allow read, write: if false; }
+    match /metrics/{id}    { allow read, write: if false; }
 
     // ── 지식베이스 원문 (내부 인사이트) ────────────────────────────────────
     // 유튜브 자막·컨설팅 전문이 담긴 원본 자산. 디렉터에게도 열지 않는다.

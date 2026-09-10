@@ -7,7 +7,11 @@ import {
   loadStudentHistory as fsLoadStudentHistory,
   pickCases,
   firestoreEnabled,
+  addMetrics,
 } from './_firestore.js';
+
+// 이 인스턴스가 첫 요청을 받는 중인지. 콜드스타트 지연을 따로 보기 위해서다.
+let _coldInstance = true;
 
 export const config = { supportsResponseStreaming: true };
 
@@ -349,6 +353,20 @@ export default async function handler(req, res) {
 
   let { question, category, mode, isPublic, studentName, extraContext, creatorOptions } = req.body;
 
+  // ── 계측 ───────────────────────────────────────────────────────────────────
+  const T0 = Date.now();
+  const cold = _coldInstance; _coldInstance = false;
+  const M = {
+    cold, mode, category, chat: !!(req.body && req.body.chat), student: String(studentName || '').trim(),
+    questionChars: String(question || '').length,
+    timings: {}, usage: {}, sources: { rag: [], cases: 0, playbook: 0, studentMemory: false },
+  };
+  const mark = (k) => { M.timings[k] = Date.now() - T0; };
+  function logMetrics(extra) {
+    M.timings.total = Date.now() - T0;
+    addMetrics(Object.assign(M, extra || {})).catch(() => {});
+  }
+
   // ─── 서버사이드 RAG 검색 ─────────────────────────────────────────────────────
   // ─── 수강생 기억: 과거 상담 기록 자동 로드 ───
   const NOTION_KEY_S = (process.env.NOTION_API_KEY || '').trim();
@@ -358,7 +376,7 @@ export default async function handler(req, res) {
       // Firestore 정본 → 없으면(null) Notion 폴백. 빈 문자열은 "기록 없음"이라 폴백하지 않는다.
       let stuCtx = await fsLoadStudentHistory(_name);
       if (stuCtx === null) stuCtx = NOTION_KEY_S ? await loadStudentHistory(NOTION_KEY_S, _name) : '';
-      if (stuCtx) extraContext = (extraContext ? extraContext + '\n\n' : '') + stuCtx;
+      if (stuCtx) { extraContext = (extraContext ? extraContext + '\n\n' : '') + stuCtx; M.sources.studentMemory = true; }
     } catch(e) { console.warn('수강생 기록 로드 실패(무시):', e.message); }
   }
 
@@ -366,9 +384,13 @@ export default async function handler(req, res) {
   if (GEMINI_KEY && question) {
     try {
       const kb = loadKB();
+      mark('kbLoad');
       if (kb) {
         const queryVec = await embedText(String(req.body.searchQuery || question), GEMINI_KEY);
+        mark('embed');
         hits = retrieve(kb, queryVec, 6);
+        mark('retrieve');
+        M.sources.rag = hits.map((h) => h.docName).filter(Boolean);
       }
     } catch(e) {
       console.warn('RAG 검색 실패 (계속 진행):', e.message);
@@ -450,6 +472,9 @@ ${outputList.includes('썸네일 아이디어') ? `## 🖼 썸네일 아이디�
   // 기존 코드에는 이 경로가 아예 없어서, 컴펌된 사례가 AI 에 닿지 않고 있었다.
   const allCases = (await fsLoadCases()) || [];
   const relevantCases = pickCases(allCases, question, 3);
+  mark('firestore');
+  M.sources.cases = relevantCases.length;
+  M.sources.playbook = playbook.length;
 
   const corePhilosophy = (g.corePhilosophy || [
     '유튜브는 SNS가 아니라 비즈니스다. 채널은 브랜드고, 콘텐츠는 상품이다.',
@@ -533,9 +558,11 @@ ${isPublic
         'Connection': 'keep-alive',
       });
       res.write('event: meta\ndata: ' + JSON.stringify({ sources: hits }) + '\n\n');
+      mark('claudeConnect');
       const reader = upstream.body.getReader();
       const decoder = new TextDecoder();
       let sseBuf = '';
+      let answerChars = 0, firstToken = false, streamErr = '';
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -549,14 +576,27 @@ ${isPublic
           try {
             const ev = JSON.parse(payload);
             if (ev.type === 'content_block_delta' && ev.delta && ev.delta.text) {
+              if (!firstToken) { firstToken = true; mark('firstToken'); }
+              answerChars += ev.delta.text.length;
               res.write('event: delta\ndata: ' + JSON.stringify({ t: ev.delta.text }) + '\n\n');
+            } else if (ev.type === 'message_start' && ev.message && ev.message.usage) {
+              // 입력 토큰과 캐시 적중은 첫 이벤트에 실려 온다.
+              const u = ev.message.usage;
+              M.model = ev.message.model || '';
+              M.usage.input = u.input_tokens || 0;
+              M.usage.cacheRead = u.cache_read_input_tokens || 0;
+              M.usage.cacheWrite = u.cache_creation_input_tokens || 0;
+            } else if (ev.type === 'message_delta' && ev.usage) {
+              M.usage.output = ev.usage.output_tokens || 0;
             } else if (ev.type === 'error') {
-              res.write('event: err\ndata: ' + JSON.stringify({ error: (ev.error && ev.error.message) || 'stream error' }) + '\n\n');
+              streamErr = (ev.error && ev.error.message) || 'stream error';
+              res.write('event: err\ndata: ' + JSON.stringify({ error: streamErr }) + '\n\n');
             }
           } catch(ignored) {}
         }
       }
       res.write('event: done\ndata: {}\n\n');
+      logMetrics({ ok: !streamErr, error: streamErr, answerChars });
       return res.end();
     }
 
@@ -567,8 +607,14 @@ ${isPublic
     });
     const data = await response.json();
     if (data.error) throw new Error('Claude: ' + data.error.message);
+    const u = data.usage || {};
+    M.model = data.model || '';
+    M.usage = { input: u.input_tokens || 0, output: u.output_tokens || 0,
+                cacheRead: u.cache_read_input_tokens || 0, cacheWrite: u.cache_creation_input_tokens || 0 };
+    logMetrics({ ok: true, answerChars: (data.content[0].text || '').length });
     return res.status(200).json({ feedback: data.content[0].text, sources: hits });
   } catch(e) {
+    logMetrics({ ok: false, error: e.message });
     return res.status(500).json({ error: e.message });
   }
 }

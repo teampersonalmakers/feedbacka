@@ -24,6 +24,7 @@ export const COL = {
   kbSources: 'kbSources',     // 지식베이스 소스 관리 (자료 목록)
   ratings: 'ratings',         // 답변 품질 로그
   history: 'history',         // 자동 대화 기록
+  metrics: 'metrics',         // 요청별 성능 지표 (지연·토큰·캐시·참조소스)
 };
 
 const TTL = 5 * 60 * 1000;
@@ -299,6 +300,26 @@ export function addRating({ question, answer, rating, student, comment }) {
     rating: rating === 'up' ? '좋음' : '아쉬움',
     student: cut(student, 190),
     comment: cut(comment, 1900),
+  });
+}
+
+// 요청별 성능 지표. 개선 전후를 숫자로 비교하기 위한 것.
+// 답변 본문은 넣지 않는다 — history 가 이미 갖고 있고, 여기는 가볍게 유지한다.
+export function addMetrics(m) {
+  return add(COL.metrics, {
+    cold: !!m.cold,
+    ok: m.ok !== false,
+    error: cut(m.error || '', 300),
+    model: cut(m.model || '', 60),
+    mode: cut(m.mode || '', 20),
+    category: cut(m.category || '', 40),
+    chat: !!m.chat,
+    student: cut(m.student || '', 100),
+    questionChars: m.questionChars || 0,
+    answerChars: m.answerChars || 0,
+    timings: m.timings || {},
+    usage: m.usage || {},
+    sources: m.sources || {},
   });
 }
 
