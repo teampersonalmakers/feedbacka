@@ -442,6 +442,8 @@ function gateFatal(detail) {
           status: data.status || '답변작성',
           category: cut(data.category || '', 100),
           student: cut(data.student || '', 100),
+          cohort: cut(data.cohort || '', 10),
+          consultDate: cut(data.consultDate || '', 10),   // YYYY-MM-DD, 질문을 실제로 받은 날
           director: cut(data.director || this.profile.nickname || '', 50),
           type: data.type || '수동등록',
           updatedAtMs: now,
@@ -471,7 +473,7 @@ function gateFatal(detail) {
         const snap = await F.getDocs(F.query(convCol(), F.orderBy('ts', 'desc'), F.limit(max)));
         return snap.docs.map((d) => {
           const v = d.data() || {};
-          return { id: d.id, title: v.title || '', student: v.student || '', ts: v.ts || 0, turnCount: v.turnCount || 0 };
+          return { id: d.id, title: v.title || '', student: v.student || '', cohort: v.cohort || '', ts: v.ts || 0, turnCount: v.turnCount || 0 };
         });
       },
 
@@ -480,7 +482,7 @@ function gateFatal(detail) {
         return snap.docs.map((d) => {
           const v = d.data() || {};
           return {
-            q: v.q || '', a: v.a == null ? null : v.a,
+            q: v.q || '', a: v.a == null ? null : v.a, ts: v.ts || 0,
             att: !!v.att, attUrl: v.attUrl || '', attName: v.attName || '',
             sources: v.sources || [],
             evidence: v.evidence || null,
@@ -492,6 +494,7 @@ function gateFatal(detail) {
         await F.setDoc(convDoc(conv.id), {
           title: cut(conv.title || '', 200),
           student: cut(conv.student || '', 100),
+          cohort: cut(conv.cohort || '', 10),
           ts: conv.ts || Date.now(),
           turnCount: (conv.turns || []).length,
           updatedAt: F.serverTimestamp(),
@@ -501,6 +504,7 @@ function gateFatal(detail) {
       async saveTurn(convId, seq, turn) {
         await F.setDoc(F.doc(turnCol(convId), turnId(seq)), {
           seq,
+          ts: Number(turn.ts) || 0,
           q: cut(turn.q || '', 60000),
           a: turn.a == null ? null : cut(turn.a, 200000),
           att: !!turn.att,

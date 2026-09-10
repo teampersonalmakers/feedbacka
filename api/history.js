@@ -42,11 +42,11 @@ async function writeToNotion({ question, answer, student, missionType, mode, typ
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
   try {
-    const { question, answer, student, missionType, mode, type } = req.body || {};
+    const { question, answer, student, cohort, missionType, mode, type } = req.body || {};
     if (!question || !answer) return res.status(400).json({ error: 'question/answer required' });
 
     if (firestoreEnabled()) {
-      const id = await addHistory({ question, answer, student, missionType, mode, type });
+      const id = await addHistory({ question, answer, student, cohort, missionType, mode, type });
       if (id) return res.status(200).json({ ok: true, store: 'firestore', id });
     }
 

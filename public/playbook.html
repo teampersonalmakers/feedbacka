@@ -165,6 +165,7 @@ body { background: var(--bg); color: var(--ink); font-family: var(--font); min-h
     <div class="tabs" id="tabs"></div>
     <div class="grow"></div>
     <select class="search" id="catFilter" title="카테고리"><option value="">카테고리 전체</option></select>
+    <select class="search" id="coFilter" title="기수" style="width:auto"><option value="">기수 전체</option><option>5기</option><option>6기</option><option>7기</option></select>
     <label class="mine"><input type="checkbox" id="mineOnly"> 내 항목만</label>
     <input class="search" id="search" placeholder="질문·답변·수강생 검색" />
     <button class="btn btn-ghost" id="evalBtn" hidden title="승인 Q&A 로 AI 답변을 자동 채점합니다">🧪 자동 평가</button>
@@ -192,6 +193,7 @@ var rows = [];        // 플레이북 전체
 var filter = '전체';
 var keyword = '';
 var catFilter = '';
+var coFilter = '';
 var mineOnly = false;
 var editing = null;   // 편집 중인 행 (null 이면 새 항목)
 
@@ -210,6 +212,7 @@ function visible() {
   return rows.filter(function(r) {
     if (filter !== '전체' && (r.status || '') !== filter) return false;
     if (catFilter && (r.category || '') !== catFilter) return false;
+    if (coFilter && (r.cohort || '') !== coFilter) return false;
     if (mineOnly && (r.director || '') !== me) return false;
     if (!kw) return true;
     return ((r.question || '') + ' ' + (r.originalQuestion || '') + ' ' +
@@ -242,7 +245,7 @@ function renderList() {
   var head = document.createElement('div');
   head.className = 'row head';
   head.innerHTML = '<div>질문</div><div class="hide-sm">카테고리</div>' +
-    '<div class="hide-sm">디렉터</div><div class="hide-sm">수강생</div><div>상태</div><div class="hide-sm">날짜</div>';
+    '<div class="hide-sm">디렉터</div><div class="hide-sm">수강생</div><div>상태</div><div class="hide-sm">상담일</div>';
   el.appendChild(head);
 
   if (!list.length) {
@@ -266,9 +269,10 @@ function renderList() {
         (r.originalQuestion && r.originalQuestion !== r.question ? '<span class="sub">' + esc(r.originalQuestion) + '</span>' : '') + '</div>' +
       '<div class="cell hide-sm">' + (r.category ? '<span class="pill cat">' + esc(r.category) + '</span>' : '') + '</div>' +
       '<div class="cell hide-sm">' + esc(r.director || '') + '</div>' +
-      '<div class="cell hide-sm">' + esc(r.student || '') + '</div>' +
+      '<div class="cell hide-sm">' + esc(r.student || '') + (r.student && r.cohort ? ' <span class="pill" style="background:#f0f2f5;color:var(--ink-mid);font-size:10px;padding:2px 6px">' + esc(r.cohort) + '</span>' : '') + '</div>' +
       '<div><span class="pill st-' + esc(r.status || '대기') + '">' + esc(r.status || '대기') + '</span></div>' +
-      '<div class="cell hide-sm">' + esc(shortDate(r.updatedAtMs || r.createdAt)) + '</div>';
+      '<div class="cell hide-sm" title="' + (r.consultDate ? '상담일 ' + esc(r.consultDate) + ' · ' : '') + '등록 ' + esc(shortDate(r.updatedAtMs || r.createdAt)) + '">' +
+        esc(r.consultDate ? r.consultDate.slice(2).replace(/-/g, '.') : shortDate(r.updatedAtMs || r.createdAt)) + '</div>';
     el.appendChild(d);
   });
 }
@@ -305,10 +309,12 @@ function openEditor(row) {
           '<textarea id="pbOQ" rows="2" placeholder="수강생이 실제로 한 표현 그대로 (보존용)"></textarea></div>' +
         '<div class="two">' +
           '<div class="field"><label>카테고리</label><select id="pbCat"></select></div>' +
-          '<div class="field"><label>수강생</label><input id="pbStu" maxlength="100" placeholder="선택"></div>' +
+          '<div class="field"><label>수강생</label><div style="display:flex;gap:8px"><input id="pbStu" maxlength="100" placeholder="선택" style="flex:1">' +
+            '<select id="pbCo" style="width:84px"><option value="">기수</option><option>5기</option><option>6기</option><option>7기</option></select></div></div>' +
         '</div>' +
         '<div class="two">' +
-          '<div class="field"><label>디렉터</label><input id="pbDir" maxlength="50"></div>' +
+          '<div class="field"><label>디렉터</label><div style="display:flex;gap:8px"><input id="pbDir" maxlength="50" style="flex:1">' +
+            '<input id="pbDate" type="date" title="상담일 — 질문을 실제로 받은 날" style="width:150px"></div></div>' +
           '<div class="field"><label>상태</label><select id="pbSt"></select>' +
             '<div class="help" id="pbStHelp"></div></div>' +
         '</div>' +
@@ -341,12 +347,14 @@ function openEditor(row) {
   $('pbA').value = r.answer || '';
   catSel.value = r.category || '';
   $('pbStu').value = r.student || '';
+  $('pbCo').value = r.cohort || (row ? '' : '6기');
+  $('pbDate').value = r.consultDate || (row ? '' : new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10));
   $('pbDir').value = r.director || '';
   stSel.value = (!admin && r.status === '승인') ? '답변작성' : (r.status || '답변작성');
   $('pbStHelp').textContent = admin ? '' : '승인은 커밍쏜만 할 수 있습니다.';
 
   if (readOnly) {
-    ['pbQ', 'pbOQ', 'pbA', 'pbStu', 'pbDir'].forEach(function(id) { $(id).disabled = true; });
+    ['pbQ', 'pbOQ', 'pbA', 'pbStu', 'pbDir', 'pbCo', 'pbDate'].forEach(function(id) { $(id).disabled = true; });
     catSel.disabled = stSel.disabled = true;
     $('pbSave').disabled = true;
   }
@@ -358,7 +366,7 @@ function openEditor(row) {
   function collect(statusOverride) {
     return {
       question: $('pbQ').value, originalQuestion: $('pbOQ').value, answer: $('pbA').value,
-      category: catSel.value, student: $('pbStu').value, director: $('pbDir').value,
+      category: catSel.value, student: $('pbStu').value, cohort: $('pbCo').value, consultDate: $('pbDate').value, director: $('pbDir').value,
       status: statusOverride || stSel.value,
       type: (r.type || '수동등록'),
     };
@@ -424,6 +432,7 @@ document.getElementById('search').addEventListener('input', function(e) {
   var sel = document.getElementById('catFilter');
   CATEGORIES.forEach(function(c) { var o = document.createElement('option'); o.value = c; o.textContent = c; sel.appendChild(o); });
   sel.addEventListener('change', function() { catFilter = sel.value; renderList(); });
+  document.getElementById('coFilter').addEventListener('change', function(e) { coFilter = e.target.value; renderList(); });
   document.getElementById('mineOnly').addEventListener('change', function(e) { mineOnly = e.target.checked; renderList(); });
 })();
 

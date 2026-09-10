@@ -91,7 +91,9 @@ service cloud.firestore {
           && request.resource.data.title is string
           && request.resource.data.title.size() <= 200
           && request.resource.data.student is string
-          && request.resource.data.student.size() <= 100;
+          && request.resource.data.student.size() <= 100
+          && request.resource.data.get('cohort', '') is string
+          && request.resource.data.get('cohort', '').size() <= 10;
 
         // 대화 안의 턴
         match /turns/{turnId} {
@@ -137,6 +139,10 @@ service cloud.firestore {
           && request.resource.data.get('director', '').size() <= 50
           && request.resource.data.get('student', '') is string
           && request.resource.data.get('student', '').size() <= 100
+          && request.resource.data.get('cohort', '') is string
+          && request.resource.data.get('cohort', '').size() <= 10
+          && request.resource.data.get('consultDate', '') is string
+          && request.resource.data.get('consultDate', '').size() <= 10
           && sizeOk();
       }
 

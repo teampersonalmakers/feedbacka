@@ -233,9 +233,14 @@ export function pickCases(cases, question, topK = 3) {
 //   history  — 앱에서 디렉터가 상담할 때마다 자동으로 쌓이는 기록 (addHistory)
 //   playbook — 노션에서 옮겨온 과거 Q&A + 디렉터가 직접 등록한 것
 // 예전에는 playbook 만 읽어서, 앱에서 5번 상담해도 6번째에 그 5번을 몰랐다.
-export async function loadStudentHistory(name) {
+// 오늘 날짜(한국) — 상담일 기본값
+export const todayKST = () => new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
+
+// 같은 이름이 기수를 넘어 겹친다(원미닛: 5기·6기). 기수가 오면 그 기수 기록만 쓰되,
+// 기수가 안 적힌 옛 기록은 버리지 않는다.
+export async function loadStudentHistory(name, cohort = '') {
   if (!name) return '';
-  const key = 'stu:' + name;
+  const key = 'stu:' + name + ':' + cohort;
   const hit = cached(key);
   if (hit !== undefined) return hit;
   const db = getDb();
@@ -249,6 +254,7 @@ export async function loadStudentHistory(name) {
     const rows = [...h.docs, ...p.docs]
       .map((d) => d.data())
       .filter((r) => r.question || r.originalQuestion)
+      .filter((r) => !cohort || !r.cohort || r.cohort === cohort)
       .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
       .slice(0, 3);
     if (!rows.length) return put(key, '');
@@ -258,7 +264,7 @@ export async function loadStudentHistory(name) {
       const when = r.createdAt ? new Date(r.createdAt).toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' }) : '';
       return '과거 질문' + (when ? ' (' + when + ')' : '') + ': ' + q + (a ? '\n당시 답변 요약: ' + a : '');
     });
-    return put(key, '[' + name + ' 수강생의 최근 상담 기록 — 이 맥락을 이어서 답변할 것]\n' + parts.join('\n---\n'));
+    return put(key, '[' + (cohort ? cohort + ' ' : '') + name + ' 수강생의 최근 상담 기록 — 이 맥락을 이어서 답변할 것]\n' + parts.join('\n---\n'));
   } catch (e) {
     console.warn('[Firestore] 수강생 이력 로드 실패:', e.message);
     return stale(key);
@@ -286,11 +292,12 @@ async function add(col, data) {
 const cut = (v, n) => String(v == null ? '' : v).slice(0, n);
 
 // 자동 대화 기록 (기존 api/history.js → Notion '자동기록')
-export function addHistory({ question, answer, student, missionType, mode, type }) {
+export function addHistory({ question, answer, student, cohort, missionType, mode, type }) {
   return add(COL.history, {
     question: cut(question, 60000),
     answer: cut(answer, 200000),
     student: cut(student, 190),
+    cohort: cut(cohort, 10),
     missionType: cut(missionType, 190),
     mode: mode === 'conv' ? '구어체' : '문어체',
     type: type === 'followup' ? '재질문' : '피드백',
@@ -333,13 +340,15 @@ export function addMetrics(m) {
 // "AI 학습시키기" — 검수 대기 초안 (기존 api/playbook.js)
 // 👎 평가 → 검수대기 초안. 커밍쏜이 플레이북 '대기' 탭에서 바로잡아 승인하면
 // 다음부터 그 답이 AI 에 들어간다. 아쉬운 답변이 학습 기회로 이어지는 경로.
-export function addPlaybookFromRating({ question, answer, student, comment, director, ratingId }) {
+export function addPlaybookFromRating({ question, answer, student, cohort, comment, director, ratingId }) {
   return add(COL.playbook, {
     question: cut(String(question).replace(/\s+/g, ' ').trim(), 500),
     originalQuestion: cut(question, 60000),
     answer: cut(answer, 200000),
     category: '',
     student: cut(student, 100),
+    cohort: cut(cohort, 10),
+    consultDate: todayKST(),
     director: cut(director, 50),
     status: '대기',
     type: '평가기반',
@@ -367,13 +376,15 @@ export async function listEvals(limit = 60) {
 }
 
 // 👍 좋아요 → 승인 후보. 디렉터가 남긴 한 줄(likeNote)이 커밍쏜 검수의 힌트가 된다.
-export function addPlaybookDraft({ question, answer, category, note, student, director }) {
+export function addPlaybookDraft({ question, answer, category, note, student, cohort, director }) {
   return add(COL.playbook, {
     question: cut(String(question).replace(/\s+/g, ' ').trim(), 500),
     originalQuestion: cut(question, 60000),
     answer: cut(answer, 200000),
     category: cut(category, 100),
     student: cut(student, 100),
+    cohort: cut(cohort, 10),
+    consultDate: todayKST(),
     director: cut(director, 50),
     status: '답변작성',   // 승인 전까지는 프롬프트에 들어가지 않는다
     type: '디렉터 추천',

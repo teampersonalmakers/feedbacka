@@ -385,7 +385,8 @@ export default async function handler(req, res) {
     try {
       const _name = String(studentName).trim();
       // Firestore 정본 → 없으면(null) Notion 폴백. 빈 문자열은 "기록 없음"이라 폴백하지 않는다.
-      let stuCtx = await fsLoadStudentHistory(_name);
+      const _cohort = String(req.body.cohort || '').trim().slice(0, 10);
+      let stuCtx = await fsLoadStudentHistory(_name, _cohort);
       if (stuCtx === null) stuCtx = NOTION_KEY_S ? await loadStudentHistory(NOTION_KEY_S, _name) : '';
       if (stuCtx) { extraContext = (extraContext ? extraContext + '\n\n' : '') + stuCtx; M.sources.studentMemory = true; }
     } catch(e) { console.warn('수강생 기록 로드 실패(무시):', e.message); }
@@ -584,8 +585,8 @@ ${isPublic
       : `질문입니다.\n\n${question}\n\n---\n\n[참고 자료]\n${contextStr}${casesBlock}\n\n---\n\n커밍쏜이 직접 대화하듯 구어체로 답변해주세요. 질문자의 상황을 먼저 이해하고, 핵심을 짚은 뒤, 다음 스텝으로 마무리. 300~500자 내외.`;
   } else {
     userPrompt = mode === 'structured'
-      ? `${studentName || '수강생'}의 미션입니다.${extraContext ? `\n\n[디렉터 메모]\n${extraContext}` : ''}\n\n[제출 내용]\n${question}\n\n---\n\n[참고 자료]\n${contextStr}${casesBlock}\n\n---\n\n[✅ 잘 잡고 있는 방향]\n(2가지, 이유 포함)\n\n[🔧 더 디깅이 필요한 부분]\n(2~3가지)\n\n[💡 다음 스텝]\n(실행 가능한 액션 2~3가지)`
-      : `${studentName || '수강생'}의 미션입니다.${extraContext ? `\n\n[디렉터 메모]\n${extraContext}` : ''}\n\n[제출 내용]\n${question}\n\n---\n\n[참고 자료]\n${contextStr}${casesBlock}\n\n---\n\n커밍쏜이 직접 말해주듯 구어체로 피드백을 작성해주세요. Why와 서사를 먼저 짚고, 핵심 방향을 제시하고, 실행 가능한 다음 스텝으로 마무리. 400~600자 내외.`;
+      ? `${studentName ? studentName + (req.body.cohort ? ' (' + String(req.body.cohort).slice(0, 10) + ')' : '') : '수강생'}의 미션입니다.${extraContext ? `\n\n[디렉터 메모]\n${extraContext}` : ''}\n\n[제출 내용]\n${question}\n\n---\n\n[참고 자료]\n${contextStr}${casesBlock}\n\n---\n\n[✅ 잘 잡고 있는 방향]\n(2가지, 이유 포함)\n\n[🔧 더 디깅이 필요한 부분]\n(2~3가지)\n\n[💡 다음 스텝]\n(실행 가능한 액션 2~3가지)`
+      : `${studentName ? studentName + (req.body.cohort ? ' (' + String(req.body.cohort).slice(0, 10) + ')' : '') : '수강생'}의 미션입니다.${extraContext ? `\n\n[디렉터 메모]\n${extraContext}` : ''}\n\n[제출 내용]\n${question}\n\n---\n\n[참고 자료]\n${contextStr}${casesBlock}\n\n---\n\n커밍쏜이 직접 말해주듯 구어체로 피드백을 작성해주세요. Why와 서사를 먼저 짚고, 핵심 방향을 제시하고, 실행 가능한 다음 스텝으로 마무리. 400~600자 내외.`;
   }
 
   try {

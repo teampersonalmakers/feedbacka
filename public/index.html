@@ -69,6 +69,9 @@ footer { background:var(--panel); border-top:1px solid var(--border); padding:10
 .chips { display:flex; gap:8px; margin-bottom:8px; flex-wrap:wrap; align-items:center; }
 .chip-in { border:1px solid var(--border); border-radius:8px; padding:6px 10px; font-size:12px; font-family:var(--font); color:var(--ink); background:var(--bg); width:130px; }
 .chip-in:focus { outline:none; border-color:var(--accent); background:#fff; }
+.chip-sel { width:auto; padding-right:8px; }
+.tstamp { display:block; font-size:10.5px; color:var(--ink-soft); margin-top:4px; text-align:right; }
+.msg-u .tstamp { color:rgba(255,255,255,.7); }
 select.chip-in { width:auto; cursor:pointer; }
 .mode-tg { display:flex; border:1px solid var(--border); border-radius:8px; overflow:hidden; }
 .mode-tg button { border:0; background:var(--bg); padding:6px 11px; font-size:12px; font-family:var(--font); color:var(--ink-soft); cursor:pointer; font-weight:600; }
@@ -134,6 +137,11 @@ textarea#inp:focus { outline:none; border-color:var(--accent); }
   <div class="composer">
     <div class="chips">
       <input class="chip-in" id="stuName" placeholder="수강생 이름 (선택)">
+      <select class="chip-in chip-sel" id="stuCohort" title="기수">
+        <option value="5기">5기</option>
+        <option value="6기" selected>6기</option>
+        <option value="7기">7기</option>
+      </select>
       <div class="mode-tg">
         <button id="mConv" class="on" onclick="setMode('conv')">구어체</button>
         <button id="mRep" onclick="setMode('report')">문어체</button>
@@ -245,7 +253,7 @@ function renderAll() {
     return;
   }
   turns.forEach(function(t) {
-    w.appendChild(userBubble(t.q, t.att, t.attUrl, t.attName));
+    w.appendChild(userBubble(t.q, t.att, t.attUrl, t.attName, t.ts));
     if (t.a != null) { var b = aiBubble(); b.text.innerHTML = md(t.a); addActions(b, t.q, t.a, t.sources, t.evidence); }
   });
   scrollBottom();
@@ -258,10 +266,19 @@ function buildEmpty() {
   d.id = 'empty';
   return d;
 }
-function userBubble(q, att, attUrl, attName) {
+var COHORTS = ['5기', '6기', '7기'];
+function cohortVal() { return document.getElementById('stuCohort').value || '6기'; }
+function setCohort(v) { if (COHORTS.indexOf(v) >= 0) document.getElementById('stuCohort').value = v; }
+function fmtTs(ts) {
+  if (!ts) return '';
+  var d = new Date(ts); if (isNaN(d)) return '';
+  return (d.getMonth() + 1) + '.' + d.getDate() + ' ' + d.toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' });
+}
+function userBubble(q, att, attUrl, attName, ts) {
   var d = document.createElement('div');
   d.className = 'msg-u';
   d.textContent = q;
+  if (ts) { var tm = document.createElement('span'); tm.className = 'tstamp'; tm.textContent = fmtTs(ts); d.appendChild(tm); }
   if (att) {
     var a;
     if (attUrl) {
@@ -358,7 +375,7 @@ function addActions(b, q, a, sources, evidence) {
     lock(up, '등록 중…');
     try {
       var r = await fetch('/api/playbook', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: q, answer: a, note: note.trim(), student: student(), director: director() }) });
+        body: JSON.stringify({ question: q, answer: a, note: note.trim(), student: student(), cohort: cohortVal(), director: director() }) });
       var d = await r.json();
       if (d.error) throw new Error(d.error);
       up.textContent = '👍 플레이북 승인 후보로 올렸어요';
@@ -369,7 +386,7 @@ function addActions(b, q, a, sources, evidence) {
     var comment = prompt('플레이북에 아쉬웠던 답변으로 남깁니다.\n어떤 점이 아쉬웠나요? (선택 · 취소해도 기록됩니다)') || '';
     lock(dn, '등록 중…');
     fetch('/api/rate', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question: q, answer: a, rating: 'down', student: student(), comment: comment, director: director() }) })
+      body: JSON.stringify({ question: q, answer: a, rating: 'down', student: student(), cohort: cohortVal(), comment: comment, director: director() }) })
       .then(function(r) { return r.json(); })
       .then(function(d) { dn.textContent = d && d.playbookId ? '👎 플레이북 수정 후보로 올렸어요' : '👎 기록됨'; })
       .catch(function() { dn.textContent = '👎 기록됨'; });
@@ -411,16 +428,16 @@ async function send() {
     });
   }
 
-  var turn = { q: text || '워크시트 첨부', att: hadAtt, attUrl: (attMeta && attMeta.url) || '', attName: (attMeta && attMeta.name) || '', a: null, sources: [], evidence: null };
+  var turn = { q: text || '워크시트 첨부', att: hadAtt, attUrl: (attMeta && attMeta.url) || '', attName: (attMeta && attMeta.name) || '', a: null, sources: [], evidence: null, ts: Date.now() };
   turns.push(turn);
   saveChat();   // 질문을 먼저 저장 — 답변 도중 탭이 닫혀도 질문은 남는다
-  document.getElementById('msgs').appendChild(userBubble(turn.q, hadAtt, turn.attUrl, turn.attName));
+  document.getElementById('msgs').appendChild(userBubble(turn.q, hadAtt, turn.attUrl, turn.attName, turn.ts));
   var b = aiBubble();
   b.text.innerHTML = '<span class="cursor"></span>';
   scrollBottom();
   t.value = ''; autoGrow(); clearAtt();
 
-  var body = { question: question, chat: true, searchQuery: (text || question).slice(0, 800), studentName: student, extraContext: extra, mode: mode, stream: true };
+  var body = { question: question, chat: true, searchQuery: (text || question).slice(0, 800), studentName: student, cohort: student ? cohortVal() : '', extraContext: extra, mode: mode, stream: true };
   if (turns.length > 1) body.contextQ = '1';
 
   try {
@@ -483,7 +500,7 @@ async function send() {
         p = p.then(function(res) {
           try {
             var isFu = typeof b.contextQ !== 'undefined';
-            var base = { student: b.studentName || '', missionType: b.missionType || '', mode: b.mode || '', type: isFu ? 'followup' : 'feedback', question: b.question || '' };
+            var base = { student: b.studentName || '', cohort: b.cohort || '', missionType: b.missionType || '', mode: b.mode || '', type: isFu ? 'followup' : 'feedback', question: b.question || '' };
             var ct = (res.headers.get('content-type') || '');
             if (ct.indexOf('text/event-stream') >= 0) {
               var reader = res.clone().body.getReader(); var dec = new TextDecoder(); var buf = ''; var txt = '';
@@ -555,6 +572,8 @@ saveChat = function() {
   if (!c) { c = { id: String(Date.now()), title: '', student: '', turns: [], ts: 0 }; convs.unshift(c); activeId = c.id; }
   c.turns = turns; c.ts = Date.now();
   c.student = document.getElementById('stuName').value.trim();
+  c.cohort = cohortVal();
+  try { localStorage.setItem('pm_cohort', c.cohort); } catch(e) {}
   if (!c.title && turns.length) c.title = turns[0].q.slice(0, 34);
   convs.sort(function(a, b) { return b.ts - a.ts; });
   persistConvs(); renderSide();
@@ -573,6 +592,7 @@ function openConv(id) {
     persistConvs();
   }
   document.getElementById('stuName').value = c.student || '';
+  setCohort(c.cohort || localStorage.getItem('pm_cohort') || '6기');
   renderAll(); renderSide(); document.body.classList.remove('side-open');
 }
 function delConv(id, ev) {
@@ -591,7 +611,7 @@ function renderSide() {
     d.className = 's-item' + (c.id === activeId ? ' on' : '');
     d.onclick = function() { openConv(c.id); };
     var t = document.createElement('span'); t.className = 't'; t.textContent = c.title || '새 대화'; d.appendChild(t);
-    if (c.student) { var s = document.createElement('span'); s.className = 'stu'; s.textContent = c.student; d.appendChild(s); }
+    if (c.student) { var s = document.createElement('span'); s.className = 'stu'; s.textContent = c.student + (c.cohort ? ' · ' + c.cohort : ''); d.appendChild(s); }
     var x = document.createElement('span'); x.className = 'del'; x.textContent = '✕'; x.onclick = function(ev) { delConv(c.id, ev); }; d.appendChild(x);
     list.appendChild(d);
   });
@@ -635,6 +655,7 @@ document.addEventListener('drop', function(e) {
     var old = JSON.parse(localStorage.getItem('pm_chat_v1') || '[]');
     if (old.length && !convs.length) { convs.push({ id: String(Date.now()), title: old[0].q.slice(0, 34), student: '', turns: old, ts: Date.now() }); persistConvs(); localStorage.removeItem('pm_chat_v1'); }
   } catch(e) {}
+  try { setCohort(localStorage.getItem('pm_cohort') || '6기'); } catch(e) {}
   if (convs.length) { openConv(convs[0].id); } else { turns = []; renderAll(); renderSide(); }
 })();
 

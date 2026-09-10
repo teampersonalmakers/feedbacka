@@ -39,7 +39,7 @@ async function writeToNotion({ question, answer, rating, student, comment }) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
   try {
-    const { question, answer, rating, student, comment, director } = req.body || {};
+    const { question, answer, rating, student, cohort, comment, director } = req.body || {};
     if (!question || !rating) return res.status(400).json({ error: 'question/rating required' });
 
     if (firestoreEnabled()) {
@@ -48,7 +48,7 @@ export default async function handler(req, res) {
         // 👎 는 플레이북 '대기' 로 자동 등록 — 커밍쏜이 바로잡아 승인하면 다음부터 반영된다.
         let playbookId = null;
         if (rating === 'down' && answer) {
-          try { playbookId = await addPlaybookFromRating({ question, answer, student, comment, director, ratingId: id }); }
+          try { playbookId = await addPlaybookFromRating({ question, answer, student, cohort, comment, director, ratingId: id }); }
           catch (e) { console.warn('[rate] 검수대기 등록 실패:', e.message); }
         }
         return res.status(200).json({ ok: true, store: 'firestore', id, playbookId });
