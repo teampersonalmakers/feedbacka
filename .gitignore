@@ -27,3 +27,6 @@ sa.json
 firebase-debug.*.log
 firestore-debug.*.log
 ui-debug.log
+
+# 세션 중 임시 스크립트 (인덱스 생성 재시도 등) — 커밋하지 않는다
+scripts/_*.mjs
