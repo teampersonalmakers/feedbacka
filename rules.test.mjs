@@ -144,6 +144,10 @@ await t('소유자도 브라우저에서 guidelines 읽기 차단',
   () => assertFails(getDoc(doc(owner, 'guidelines', 'g1'))));
 await t('cases 읽기 차단',
   () => assertFails(getDoc(doc(owner, 'cases', 'c1'))));
+await t('chunks(벡터 청크)는 소유자도 브라우저에서 읽기 차단',
+  () => assertFails(getDoc(doc(owner, 'chunks', 'k1'))));
+await t('chunks 쓰기 차단',
+  () => assertFails(setDoc(doc(owner, 'chunks', 'k1'), { text: 'x' })));
 
 console.log('\n── 입력 검증 ──');
 await t('닉네임 20자 초과 차단',

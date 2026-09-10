@@ -25,6 +25,7 @@ export const COL = {
   ratings: 'ratings',         // 답변 품질 로그
   history: 'history',         // 자동 대화 기록
   metrics: 'metrics',         // 요청별 성능 지표 (지연·토큰·캐시·참조소스)
+  chunks: 'chunks',           // 지식베이스 청크 + 벡터 (findNearest 대상)
 };
 
 const TTL = 5 * 60 * 1000;

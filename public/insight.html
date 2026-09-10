@@ -294,6 +294,7 @@ async function openDetail(r) {
       '</div>' +
       '<div class="modal-foot">' +
         '<button class="btn btn-danger" id="dDel">삭제</button>' +
+        '<button class="btn btn-ghost" id="dEmbed" title="자막을 청크로 잘라 AI 검색에 다시 반영합니다">AI 반영' + ((r.chunks && r.embeddedAt) ? ' ✓' : '') + '</button>' +
         '<div class="msg" id="dMsg"></div><div class="grow"></div>' +
         '<button class="btn btn-ghost" id="dCopy">자막 복사</button>' +
         '<button class="btn btn-primary" id="dEdit">자막 교체</button>' +
@@ -317,11 +318,37 @@ async function openDetail(r) {
     setTimeout(function() { $('dCopy').textContent = '자막 복사'; }, 1500);
   };
   $('dEdit').onclick = function() { close(); openEditor(full); };
+  $('dEmbed').onclick = async function() {
+    var b = $('dEmbed'); b.disabled = true; b.textContent = '반영 중…';
+    try {
+      var d = await syncEmbedding(r.id, 'upsert');
+      b.textContent = 'AI 반영 ✓ (' + d.chunks + '청크)';
+      await reload();
+    } catch (e) { b.textContent = 'AI 반영'; $('dMsg').className = 'msg err'; $('dMsg').textContent = 'AI 반영 실패: ' + e.message; }
+    b.disabled = false;
+  };
   $('dDel').onclick = async function() {
     if (!confirm('이 소스를 삭제할까요? 되돌릴 수 없습니다.')) return;
-    try { await window.PMFire.deleteKb(r.id); close(); await reload(); }
+    try {
+      await window.PMFire.deleteKb(r.id);
+      try { await syncEmbedding(r.id, 'delete'); } catch (e2) { console.warn('청크 삭제 실패:', e2.message); }
+      close(); await reload();
+    }
     catch (e) { $('dMsg').className = 'msg err'; $('dMsg').textContent = '삭제 실패: ' + e.message; }
   };
+}
+
+// ─── AI 검색 반영 (/api/kb-embed) ──────────────────────────────────────────
+async function syncEmbedding(id, action) {
+  var token = await window.PMFire.idToken();
+  var res = await fetch('/api/kb-embed', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+    body: JSON.stringify({ id: id, action: action || 'upsert' }),
+  });
+  var d = await res.json();
+  if (!res.ok || d.error) throw new Error(d.error || ('HTTP ' + res.status));
+  return d;
 }
 
 // ─── 추가 / 교체 ────────────────────────────────────────────────────────────
@@ -409,10 +436,22 @@ function openEditor(row) {
     if (text.length < 20) { msg.className = 'msg err'; msg.textContent = '자막을 붙여넣어주세요'; return; }
     btn.disabled = true;
     try {
-      await window.PMFire.saveKb(row && row.id, {
+      msg.className = 'msg ok'; msg.textContent = '저장 중…';
+      var savedId = await window.PMFire.saveKb(row && row.id, {
         name: $('eName').value, type: $('eType').value, category: $('eCat').value,
         link: $('eLink').value, memo: $('eMemo').value, transcript: text,
       });
+      // 저장 즉시 AI 검색에 반영한다. 실패해도 자막은 이미 저장된 상태라 안내만 한다.
+      msg.textContent = 'AI 검색에 반영 중… (자막 길이에 따라 10초~1분)';
+      try {
+        var emb = await syncEmbedding(savedId, 'upsert');
+        msg.textContent = 'AI 검색 반영 완료 · 청크 ' + emb.chunks + '개';
+      } catch (e2) {
+        msg.className = 'msg err';
+        msg.textContent = '저장은 됐지만 AI 반영 실패: ' + e2.message + ' — 나중에 "AI 반영" 버튼으로 다시 시도';
+        btn.disabled = false;
+        return;
+      }
       close(); await reload();
     } catch (e) {
       msg.className = 'msg err';

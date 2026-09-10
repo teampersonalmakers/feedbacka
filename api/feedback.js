@@ -10,6 +10,7 @@ import {
   addMetrics,
 } from './_firestore.js';
 import { claudeHeaders, claudeBody, cachedBlock, pickText } from './_claude.js';
+import { embedQuery, searchChunks, countChunks } from './_vectors.js';
 
 // 이 인스턴스가 첫 요청을 받는 중인지. 콜드스타트 지연을 따로 보기 위해서다.
 let _coldInstance = true;
@@ -303,10 +304,18 @@ export default async function handler(req, res) {
 
   // ── GET: KB 상태 확인 ──────────────────────────────────────────────────────
   if (req.method === 'GET') {
-    const kb = loadKB();
-    if (!kb) return res.status(200).json({ status: 'error', message: '지식베이스 로드 실패' });
-    const total = (kb.documents || []).reduce((s, d) => s + (d.chunks || []).length, 0);
-    const docCount = (kb.documents || []).length;
+    // 청크 수는 Firestore 를 우선 센다(파일 80MB 를 읽지 않기 위해). 없으면 파일로.
+    let total = 0, docCount = 0, chunkSource = 'file';
+    try {
+      if (firestoreEnabled()) { total = await countChunks(); chunkSource = 'firestore'; }
+    } catch (e) { console.warn('chunks count 실패:', e.message); }
+    if (!total) {
+      const kb = loadKB();
+      if (!kb) return res.status(200).json({ status: 'error', message: '지식베이스 로드 실패' });
+      total = (kb.documents || []).reduce((s, d) => s + (d.chunks || []).length, 0);
+      docCount = (kb.documents || []).length;
+      chunkSource = 'file';
+    }
 
     // 어떤 저장소에서 무엇을 읽고 있는지 그대로 보여준다.
     // 배포 후 환경변수가 실제로 먹었는지 확인하는 용도.
@@ -340,6 +349,7 @@ export default async function handler(req, res) {
         cases: (cs || []).length,
       },
       source: {
+        chunks: chunkSource,
         guidelines: g && g.persona ? 'firestore' : (process.env.NOTION_API_KEY ? 'notion' : 'file'),
         playbook: pb && pb.length ? 'firestore' : (notionPlaybookCount ? 'notion' : 'none'),
       },
@@ -383,19 +393,36 @@ export default async function handler(req, res) {
 
   let hits = [];
   if (GEMINI_KEY && question) {
+    const q = String(req.body.searchQuery || question);
     try {
-      const kb = loadKB();
-      mark('kbLoad');
-      if (kb) {
-        const queryVec = await embedText(String(req.body.searchQuery || question), GEMINI_KEY);
+      // 1순위: Firestore 벡터 검색. 파일을 읽지 않으니 콜드스타트에 80MB 파싱이 빠진다.
+      if (firestoreEnabled()) {
+        const queryVec = await embedQuery(q, GEMINI_KEY);
         mark('embed');
-        hits = retrieve(kb, queryVec, 6);
+        hits = await searchChunks(queryVec, 6);
         mark('retrieve');
-        M.sources.rag = hits.map((h) => h.docName).filter(Boolean);
+        M.sources.ragBackend = 'firestore';
+      } else {
+        throw new Error('Firestore 미설정');
       }
-    } catch(e) {
-      console.warn('RAG 검색 실패 (계속 진행):', e.message);
+    } catch (e) {
+      // 인덱스가 아직 없거나(FAILED_PRECONDITION) 청크가 안 올라간 경우 파일로 폴백.
+      console.warn('벡터 검색 실패 → 파일 폴백:', e.message);
+      try {
+        const kb = loadKB();
+        mark('kbLoad');
+        if (kb) {
+          const queryVec = await embedText(q, GEMINI_KEY);
+          mark('embed');
+          hits = retrieve(kb, queryVec, 6);
+          mark('retrieve');
+          M.sources.ragBackend = 'file';
+        }
+      } catch (e2) {
+        console.warn('RAG 검색 실패 (계속 진행):', e2.message);
+      }
     }
+    M.sources.rag = hits.map((h) => h.docName).filter(Boolean);
   }
 
   // ── Creator 모드 ──────────────────────────────────────────────────────────────
