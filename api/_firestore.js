@@ -333,14 +333,14 @@ export function addMetrics(m) {
 // "AI 학습시키기" — 검수 대기 초안 (기존 api/playbook.js)
 // 👎 평가 → 검수대기 초안. 커밍쏜이 플레이북 '대기' 탭에서 바로잡아 승인하면
 // 다음부터 그 답이 AI 에 들어간다. 아쉬운 답변이 학습 기회로 이어지는 경로.
-export function addPlaybookFromRating({ question, answer, student, comment, ratingId }) {
+export function addPlaybookFromRating({ question, answer, student, comment, director, ratingId }) {
   return add(COL.playbook, {
     question: cut(String(question).replace(/\s+/g, ' ').trim(), 500),
     originalQuestion: cut(question, 60000),
     answer: cut(answer, 200000),
     category: '',
     student: cut(student, 100),
-    director: '',
+    director: cut(director, 50),
     status: '대기',
     type: '평가기반',
     source: 'app',
@@ -366,14 +366,19 @@ export async function listEvals(limit = 60) {
   return snap.docs.map((d) => Object.assign({ id: d.id }, d.data()));
 }
 
-export function addPlaybookDraft({ question, answer, category }) {
+// 👍 좋아요 → 승인 후보. 디렉터가 남긴 한 줄(likeNote)이 커밍쏜 검수의 힌트가 된다.
+export function addPlaybookDraft({ question, answer, category, note, student, director }) {
   return add(COL.playbook, {
-    question: cut(question, 60000),
+    question: cut(String(question).replace(/\s+/g, ' ').trim(), 500),
     originalQuestion: cut(question, 60000),
     answer: cut(answer, 200000),
     category: cut(category, 100),
+    student: cut(student, 100),
+    director: cut(director, 50),
     status: '답변작성',   // 승인 전까지는 프롬프트에 들어가지 않는다
-    type: '수동등록',
+    type: '디렉터 추천',
     source: 'app',
+    fromLike: true,
+    likeNote: cut(note, 1000),
   });
 }

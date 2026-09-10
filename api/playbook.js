@@ -49,12 +49,12 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { question, answer, category } = req.body || {};
+  const { question, answer, category, note, student, director } = req.body || {};
   if (!question || !answer) return res.status(400).json({ error: 'question과 answer가 필요합니다' });
 
   try {
     if (firestoreEnabled()) {
-      const id = await addPlaybookDraft({ question, answer, category });
+      const id = await addPlaybookDraft({ question, answer, category, note, student, director });
       if (id) return res.status(200).json({ ok: true, store: 'firestore', id, url: '' });
     }
 

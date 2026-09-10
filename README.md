@@ -12,7 +12,7 @@ api/          Vercel 서버리스 함수
   ocr.js         Claude Vision 워크시트 OCR
   rate.js        평가 기록
   history.js     대화 자동 기록
-  playbook.js    "AI 학습시키기" 검수 대기 등록
+  playbook.js    👍 좋아요 → 플레이북 승인 후보 등록
 public/       정적 페이지
   index.html     메인 챗 (chat.html 과 동일 내용)
   chat.html      챗 UI
