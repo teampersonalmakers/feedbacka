@@ -316,10 +316,13 @@ function buildEvidence(ev) {
   d.innerHTML = h;
   return d;
 }
+// 근거(📎 자료 칩 + 🔍 근거 보기)는 커밍쏜 계정에만 보인다. 디렉터에게는 답변만.
+// 데이터는 그대로 저장되므로 나중에 다시 켜도 과거 답변의 근거가 남아 있다.
+function canSeeEvidence() { return !!(window.PMFire && window.PMFire.isOwner && window.PMFire.isOwner()); }
 function addActions(b, q, a, sources, evidence) {
-  addSources(b, sources);
+  if (canSeeEvidence()) addSources(b, sources);
   var ad = document.createElement('div'); ad.className = 'acts';
-  if (evidence) {
+  if (evidence && canSeeEvidence()) {
     var ev = buildEvidence(evidence);
     var evBtn = document.createElement('button'); evBtn.className = 'act'; evBtn.textContent = '🔍 근거 보기';
     evBtn.onclick = function() { ev.hidden = !ev.hidden; evBtn.textContent = ev.hidden ? '🔍 근거 보기' : '🔍 근거 닫기'; };
