@@ -411,6 +411,11 @@ function gateFatal(detail) {
           body: cut(String(data.body || ''), 20000),
           cohort: cut(data.cohort || '', 30), round: cut(data.round || '', 30),
           director: cut(data.director || '', 50), participants: cut(data.participants || '', 200),
+          // 판단 카드 구조 (녹취 증류 결과·직접 입력). 비어 있으면 body 만 쓴다.
+          situation: cut(data.situation || '', 2000), diagnosis: cut(data.diagnosis || '', 2000),
+          prescription: cut(data.prescription || '', 3000), reasoning: cut(data.reasoning || '', 2000),
+          quote: cut(data.quote || '', 1000), tags: (data.tags || []).slice(0, 5).map((t) => cut(String(t), 20)),
+          status: cut(data.status || (data.aiApplied ? 'approved' : 'inactive'), 20),
           confirmed: data.confirmed !== false, aiApplied: !!data.aiApplied,
           updatedAt: Date.now(), updatedBy: user.email,
         };

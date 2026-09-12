@@ -201,3 +201,65 @@ export async function reembedAllPlaybook(key) {
   }
   return { chunks: n, removed, docs: snap.size };
 }
+
+
+// ─── origin 을 지정한 검색 (사례만 / 검증 답변만) ─────────────────────────────
+// 인덱스: chunks(origin ASC, embedding VECTOR). 없으면 FAILED_PRECONDITION → 호출부 폴백.
+export async function searchChunksByOrigin(origin, queryVec, topK = 3) {
+  const db = getDb();
+  const snap = await db.collection(COL.chunks).where('origin', '==', origin)
+    .findNearest({ vectorField: 'embedding', queryVector: FieldValue.vector(queryVec), limit: topK, distanceMeasure: 'COSINE', distanceResultField: 'distance' })
+    .get();
+  return snap.docs.map((d) => Object.assign({ id: d.id }, d.data(), { score: 1 - (d.data().distance ?? 1) }));
+}
+
+// ─── 디렉팅 사례(판단 카드) ↔ 청크 ───────────────────────────────────────────
+// 승인된(aiApplied) 사례만 검색 자산이 된다. 요약 + 구조화 본문을 한 청크로.
+export async function deleteCaseChunks(caseId) {
+  const db = getDb();
+  const snap = await db.collection(COL.chunks).where('caseId', '==', caseId).select().get();
+  const b = db.batch();
+  snap.docs.forEach((d) => b.delete(d.ref));
+  if (snap.size) await b.commit();
+  return snap.size;
+}
+
+export function caseText(c) {
+  const parts = [];
+  if (c.situation) parts.push('상황: ' + c.situation);
+  if (c.diagnosis) parts.push('진단: ' + c.diagnosis);
+  if (c.prescription) parts.push('처방: ' + c.prescription);
+  if (c.reasoning) parts.push('이유: ' + c.reasoning);
+  if (c.quote) parts.push('커밍쏜 발화: "' + c.quote + '"');
+  return parts.length ? parts.join('\n') : String(c.body || '');
+}
+
+export async function upsertCaseChunk(caseId, key) {
+  const db = getDb();
+  const doc = await db.collection(COL.cases).doc(caseId).get();
+  if (!doc.exists) { await deleteCaseChunks(caseId); return 0; }
+  const c = doc.data();
+  await deleteCaseChunks(caseId);
+  if (!c.aiApplied || !c.summary) return 0;
+  const text = ('사례: ' + c.summary + '\n' + caseText(c)).slice(0, 6000);
+  const vec = await embedDoc(text, key);
+  await db.collection(COL.chunks).doc(`case_${caseId}`).set({
+    origin: 'case', caseId, docId: caseId, docName: '디렉팅 사례: ' + String(c.summary).slice(0, 60), docType: 'case',
+    summary: String(c.summary), cohort: c.cohort || '', tags: c.tags || [], idx: 0, text, chars: text.length,
+    embedding: FieldValue.vector(vec), createdAt: Date.now(),
+  });
+  await doc.ref.set({ embeddedAt: Date.now() }, { merge: true });
+  return 1;
+}
+
+export async function reembedAllCases(key) {
+  const db = getDb();
+  const snap = await db.collection(COL.cases).get();
+  let n = 0, removed = 0;
+  for (const d of snap.docs) {
+    const c = d.data();
+    if (c.aiApplied && c.summary) n += await upsertCaseChunk(d.id, key);
+    else if (c.embeddedAt) { removed += await deleteCaseChunks(d.id); await d.ref.set({ embeddedAt: 0 }, { merge: true }); }
+  }
+  return { chunks: n, removed, docs: snap.size };
+}

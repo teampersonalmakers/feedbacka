@@ -10,7 +10,7 @@ import {
   addMetrics,
 } from './_firestore.js';
 import { claudeHeaders, claudeBody, cachedBlock, pickText } from './_claude.js';
-import { embedQuery, searchChunks, countChunks } from './_vectors.js';
+import { embedQuery, searchChunks, searchChunksByOrigin, countChunks } from './_vectors.js';
 
 // 이 인스턴스가 첫 요청을 받는 중인지. 콜드스타트 지연을 따로 보기 위해서다.
 let _coldInstance = true;
@@ -393,6 +393,7 @@ export default async function handler(req, res) {
   }
 
   let hits = [];
+  let vectorCases = null;   // 판단 카드(승인 사례) 벡터 검색 결과. null 이면 단어 겹침 폴백.
   if (GEMINI_KEY && question) {
     const q = String(req.body.searchQuery || question);
     try {
@@ -400,7 +401,13 @@ export default async function handler(req, res) {
       if (firestoreEnabled()) {
         const queryVec = await embedQuery(q, GEMINI_KEY);
         mark('embed');
-        hits = await searchChunks(queryVec, 6);
+        // 자막·검증 답변은 전체에서 6건, 판단 카드는 따로 3건 — 자막 2,344조각에 사례가 묻히지 않게.
+        const [all, cs] = await Promise.all([
+          searchChunks(queryVec, 6),
+          searchChunksByOrigin('case', queryVec, 3).catch((e) => { console.warn('사례 벡터 검색 실패 → 단어 겹침 폴백:', e.message.slice(0, 80)); return null; }),
+        ]);
+        hits = all;
+        if (cs) vectorCases = cs.filter((c) => c.score >= 0.45).map((c) => ({ summary: c.summary || c.docName, body: c.text, cohort: c.cohort || '', score: c.score }));
         mark('retrieve');
         M.sources.ragBackend = 'firestore';
       } else {
@@ -503,8 +510,11 @@ ${outputList.includes('썸네일 아이디어') ? `## 🖼 썸네일 아이디�
 
   // 디렉팅 사례 아카이브(컨설팅 내용) — Notion 에서 'AI반영' 체크된 것만.
   // 기존 코드에는 이 경로가 아예 없어서, 컴펌된 사례가 AI 에 닿지 않고 있었다.
-  const allCases = (await fsLoadCases()) || [];
-  const relevantCases = pickCases(allCases, question, 3);
+  // 판단 카드: 벡터 검색이 되면 그 결과(의미 기준), 아니면 예전 단어 겹침 방식.
+  const relevantCases = vectorCases !== null
+    ? vectorCases
+    : pickCases((await fsLoadCases()) || [], question, 3);
+  M.sources.casesBackend = vectorCases !== null ? 'vector' : 'keyword';
   mark('firestore');
   M.sources.cases = relevantCases.length;
   M.sources.playbook = playbook.length;

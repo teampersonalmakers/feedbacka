@@ -27,6 +27,7 @@ export const COL = {
   metrics: 'metrics',         // 요청별 성능 지표 (지연·토큰·캐시·참조소스)
   chunks: 'chunks',           // 지식베이스 청크 + 벡터 (findNearest 대상)
   evals: 'evals',             // 승인 Q&A 기반 자동 평가 결과
+  distill: 'distill',         // 녹취 → 판단 카드 증류 진행 상태 (녹취별 1건)
 };
 
 const TTL = 5 * 60 * 1000;

@@ -26,9 +26,9 @@ export function claudeHeaders(apiKey) {
 // system: 문자열 또는 [{ type:'text', text, cache_control? }] 블록 배열
 // user  : 문자열 또는 콘텐츠 블록 배열(이미지 등)
 export function claudeBody(system, user, opts = {}) {
-  const { stream = false, maxTokens = 12000, effort = 'medium' } = opts;
+  const { stream = false, maxTokens = 12000, effort = 'medium', model = CLAUDE_MODEL } = opts;
   return JSON.stringify({
-    model: CLAUDE_MODEL,
+    model,
     max_tokens: maxTokens,
     stream,
     ...(system ? { system } : {}),

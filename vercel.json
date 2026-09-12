@@ -1,7 +1,18 @@
 {
   "functions": {
-    "api/embed.js": { "maxDuration": 30 },
-    "api/feedback.js": { "maxDuration": 60 },
-    "api/ocr.js": { "maxDuration": 60 }
+    "api/embed.js": {
+      "maxDuration": 30
+    },
+    "api/feedback.js": {
+      "maxDuration": 60,
+      "includeFiles": "knowledge/base*.json"
+    },
+    "api/ocr.js": {
+      "maxDuration": 60
+    },
+    "api/distill.js": {
+      "maxDuration": 300,
+      "includeFiles": "knowledge/base*.json"
+    }
   }
 }

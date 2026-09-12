@@ -10,7 +10,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { requireOwner } from './_auth.js';
-import { upsertKbChunks, deleteKbChunks, upsertPlaybookChunk, deletePlaybookChunks, reembedAllPlaybook } from './_vectors.js';
+import { upsertKbChunks, deleteKbChunks, upsertPlaybookChunk, deletePlaybookChunks, reembedAllPlaybook, upsertCaseChunk, deleteCaseChunks, reembedAllCases } from './_vectors.js';
 
 export const config = { maxDuration: 300 };
 
@@ -39,6 +39,24 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, chunks: await upsertPlaybookChunk(id, KEY) });
     } catch (e) {
       console.error('[kb-embed/playbook]', e.message);
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
+  // 디렉팅 사례(판단 카드) — 승인/반려/수정/삭제 시 호출된다.
+  if (kind === 'case') {
+    const KEY = process.env.GEMINI_API_KEY;
+    try {
+      if (action === 'all') {
+        if (!KEY) return res.status(500).json({ error: 'GEMINI_API_KEY not configured' });
+        return res.status(200).json(Object.assign({ ok: true }, await reembedAllCases(KEY)));
+      }
+      if (!id || typeof id !== 'string') return res.status(400).json({ error: 'id 가 필요합니다' });
+      if (action === 'delete') return res.status(200).json({ ok: true, removed: await deleteCaseChunks(id) });
+      if (!KEY) return res.status(500).json({ error: 'GEMINI_API_KEY not configured' });
+      return res.status(200).json({ ok: true, chunks: await upsertCaseChunk(id, KEY) });
+    } catch (e) {
+      console.error('[kb-embed/case]', e.message);
       return res.status(500).json({ error: e.message });
     }
   }
