@@ -177,6 +177,18 @@ export async function loadPlaybook() {
   }
 }
 
+// 👍 검증 세트 — 승인 전이라도 디렉터가 "좋다" 한 Q&A. 자동 평가의 정답지로 쓴다.
+export async function loadLikedPlaybook() {
+  const db = getDb();
+  if (!db) return [];
+  try {
+    const snap = await db.collection(COL.playbook).where('fromLike', '==', true).limit(200).get();
+    return snap.docs.map((d) => Object.assign({ id: d.id }, d.data()))
+      .filter((r) => r.status !== '승인' && r.status !== '보류' && r.question && r.answer)
+      .map((r) => ({ id: r.id, q: r.question, category: r.category || '', answer: r.answer, liked: true }));
+  } catch (e) { console.warn('[Firestore] 👍 세트 로드 실패:', e.message); return []; }
+}
+
 // ─── 읽기: 디렉팅 사례 아카이브 (컨설팅 내용) ────────────────────────────────
 // Notion 의 'AI반영' 체크가 켜진 것만 쓴다 — 팀이 이미 큐레이션해 둔 기준을 그대로 따른다.
 export async function loadCases() {
@@ -364,7 +376,7 @@ export function addEval(e) {
     runId: cut(e.runId, 60), playbookId: cut(e.playbookId, 60),
     question: cut(e.question, 2000), expected: cut(e.expected, 8000), actual: cut(e.actual, 12000),
     score: Number(e.score) || 0, verdict: cut(e.verdict, 20), reason: cut(e.reason, 2000),
-    skipPlaybook: !!e.skipPlaybook, model: cut(e.model, 60), ms: Number(e.ms) || 0, by: cut(e.by, 200),
+    skipPlaybook: !!e.skipPlaybook, model: cut(e.model, 60), ms: Number(e.ms) || 0, by: cut(e.by, 200), set: cut(e.set || 'approved', 20),
   });
 }
 

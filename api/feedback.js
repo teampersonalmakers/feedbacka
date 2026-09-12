@@ -569,12 +569,13 @@ ${corePhilosophy}
 ${toneGuide}${feedbackOrder}${freeGuidelines}${doNotDo}${categoryRules}${playbookStr}`;
 
   let VARIABLE_SYSTEM = `당신의 과거 콘텐츠, 강의, 컨설팅 자료를 참고하여 답변하세요.
+참고 자료 중 '커밍쏜 승인 답변'과 '디렉터 검증 답변'은 팀이 실제 상담에서 확인한 답이다. 비슷한 질문이면 자막보다 이 답의 판단과 기조를 우선 따른다. 다른 수강생의 사례라도 판단 기준은 그대로 적용한다.
 ${isPublic
   ? '지금 대화하는 상대는 멤버십 회원입니다. 1:1 코칭을 받는 것처럼 따뜻하지만 솔직하게 대화하세요.'
   : '디렉터가 수강생 미션을 검토하는 상황입니다. 커밍쏜의 관점으로 피드백 방향을 제시해주세요.'}`;
 
   const contextStr = hits.length > 0
-    ? hits.map((h, i) => `[참고 ${i+1} — ${h.docName}]\n${h.text}`).join('\n\n---\n\n')
+    ? hits.map((h, i) => `[참고 ${i+1} — ${h.docType === 'playbook' ? (h.verified === 'approved' ? '커밍쏜 승인 답변' : '디렉터 검증 답변') + ' · ' : ''}${h.docName}]\n${h.text}`).join('\n\n---\n\n')
     : '(검색된 참고 자료 없음 — 핵심 철학을 바탕으로 답변)';
 
 

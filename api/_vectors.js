@@ -73,7 +73,7 @@ export async function searchChunks(queryVec, topK = 6) {
     .get();
   return snap.docs.map((d) => {
     const r = d.data();
-    return { docName: r.docName, docType: r.docType, text: r.text, score: 1 - (r.distance ?? 1), origin: r.origin };
+    return { docName: r.docName, docType: r.docType || '', text: r.text, score: 1 - (r.distance ?? 1), origin: r.origin, verified: r.verified || '' };
   });
 }
 
@@ -140,4 +140,64 @@ export async function upsertKbChunks(kbId, key) {
   }
   await ref.set({ chunks: parts.length, embeddedAt: Date.now(), embeddedVia: 'kbSources' }, { merge: true });
   return parts.length;
+}
+
+
+// ─── 플레이북 검증 답변 ↔ 청크 ─────────────────────────────────────────────
+// 디렉터가 👍 를 누른 답변과 커밍쏜이 승인한 Q&A 는 "팀이 확인한 답" 이다.
+// 자막처럼 임베딩해 두면 다른 수강생의 비슷한 질문에도 근거로 검색된다.
+// 수강생 이름에 묶이지 않는다 — 내용이 자산이지 이름이 자산이 아니다.
+export async function deletePlaybookChunks(playbookId) {
+  const db = getDb();
+  const snap = await db.collection(COL.chunks).where('playbookId', '==', playbookId).select().get();
+  const b = db.batch();
+  snap.docs.forEach((d) => b.delete(d.ref));
+  if (snap.size) await b.commit();
+  return snap.size;
+}
+
+export function playbookEligible(p) {
+  return !!(p && p.answer && String(p.answer).trim().length >= 40 && (p.status === '승인' || (p.fromLike && p.status !== '보류')));
+}
+
+export async function upsertPlaybookChunk(playbookId, key) {
+  const db = getDb();
+  const doc = await db.collection(COL.playbook).doc(playbookId).get();
+  if (!doc.exists) { await deletePlaybookChunks(playbookId); return 0; }
+  const p = doc.data();
+  await deletePlaybookChunks(playbookId);
+  if (!playbookEligible(p)) return 0;
+  const q = String(p.question || p.originalQuestion || '').trim();
+  const a = String(p.answer || '').trim();
+  const verified = p.status === '승인' ? 'approved' : 'like';
+  const head = `질문: ${q}\n답변: `;
+  // 답변이 길면 답변만 나눠 담고, 각 조각 앞에 질문을 붙여 검색 맥락을 유지한다.
+  const parts = splitChunks(a, 1400, 100).map((t) => head + t);
+  const vectors = [];
+  for (const t of parts) vectors.push(await embedDoc(t, key));
+  const b = db.batch();
+  parts.forEach((t, i) => {
+    b.set(db.collection(COL.chunks).doc(`pb_${playbookId}_${i}`), {
+      origin: 'playbook', playbookId, verified,
+      docId: playbookId, docName: (verified === 'approved' ? '승인 답변: ' : '디렉터 검증 답변: ') + q.slice(0, 60),
+      docType: 'playbook', category: p.category || '', cohort: p.cohort || '',
+      idx: i, text: t, chars: t.length, embedding: FieldValue.vector(vectors[i]), createdAt: Date.now(),
+    });
+  });
+  await b.commit();
+  await doc.ref.set({ embeddedAt: Date.now(), embeddedAs: verified, chunks: parts.length }, { merge: true });
+  return parts.length;
+}
+
+// 검증 답변 전체 재반영 (플레이북에서 커밍쏜이 누른다)
+export async function reembedAllPlaybook(key) {
+  const db = getDb();
+  const snap = await db.collection(COL.playbook).get();
+  let n = 0, removed = 0;
+  for (const d of snap.docs) {
+    const p = d.data();
+    if (playbookEligible(p)) { n += await upsertPlaybookChunk(d.id, key); }
+    else if (p.embeddedAt) { removed += await deletePlaybookChunks(d.id); await d.ref.set({ embeddedAt: 0, embeddedAs: '', chunks: 0 }, { merge: true }); }
+  }
+  return { chunks: n, removed, docs: snap.size };
 }

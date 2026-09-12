@@ -64,6 +64,12 @@ body { background: var(--bg); color: var(--ink); font-family: var(--font); min-h
 .ev-row details { margin-top: 6px; font-size: 12.5px; } .ev-row summary { cursor: pointer; color: var(--ink-mid); }
 .ev-row pre { white-space: pre-wrap; font-family: inherit; background: var(--bg); border-radius: 8px; padding: 8px 10px; margin: 6px 0; line-height: 1.6; }
 .ev-opts { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; font-size: 13px; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.stat { background: var(--paper); border: 1px solid var(--border); border-radius: 11px; padding: 12px 14px; }
+.stat .k { font-size: 10.5px; font-weight: 700; color: var(--ink-light); }
+.stat .v { font-size: 20px; font-weight: 800; margin-top: 4px; letter-spacing: -.4px; }
+.stat .v small { font-size: 11px; color: var(--ink-light); font-weight: 500; margin-left: 4px; }
+.stat .v.good { color: var(--ok); } .stat .v.bad { color: #c0392b; }
 .mine { display: flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--ink-mid); white-space: nowrap; cursor: pointer; }
 .mine input { accent-color: var(--accent); }
 .btn { border: 0; border-radius: 9px; padding: 9px 15px; font-family: var(--font);
@@ -161,6 +167,8 @@ body { background: var(--bg); color: var(--ink); font-family: var(--font); min-h
     <p class="hint">승인된 Q&amp;A만 AI가 참고합니다 · 저장 후 5분 안에 반영</p>
   </div>
 
+  <div class="stats" id="ownerStats" hidden></div>
+
   <div class="toolbar">
     <div class="tabs" id="tabs"></div>
     <div class="grow"></div>
@@ -204,6 +212,14 @@ function shortDate(ts) {
   return String(d.getFullYear()).slice(2) + '.' + String(d.getMonth() + 1).padStart(2, '0') + '.' + String(d.getDate()).padStart(2, '0');
 }
 function isAdmin() { return !!(window.PMFire && window.PMFire.isAdmin()); }
+function isOwner() { return !!(window.PMFire && window.PMFire.isOwner && window.PMFire.isOwner()); }
+async function embedApi(body) {
+  var token = await window.PMFire.idToken();
+  var res = await fetch('/api/kb-embed', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify(body) });
+  var d = await res.json();
+  if (!res.ok || d.error) throw new Error(d.error || ('HTTP ' + res.status));
+  return d;
+}
 
 // ─── 목록 ───────────────────────────────────────────────────────────────────
 function visible() {
@@ -277,7 +293,33 @@ function renderList() {
   });
 }
 
-function render() { renderTabs(); renderList(); }
+// 커밍쏜만 보는 계기판: 최근 30일 👍/👎, 검증 세트 규모, 검색 반영 현황
+function renderOwnerStats() {
+  var el = document.getElementById('ownerStats');
+  if (!isOwner()) { el.hidden = true; return; }
+  var since = Date.now() - 30 * 86400000;
+  var recent = rows.filter(function(r) { return (r.createdAt || 0) >= since; });
+  var likes = recent.filter(function(r) { return r.fromLike; }).length;
+  var dislikes = recent.filter(function(r) { return r.fromRating; }).length;
+  var total = likes + dislikes;
+  var liked = rows.filter(function(r) { return r.fromLike && r.status !== '승인' && r.status !== '보류'; }).length;
+  var approved = rows.filter(function(r) { return r.status === '승인'; }).length;
+  var embedded = rows.filter(function(r) { return r.embeddedAt; }).length;
+  var byDir = {};
+  recent.forEach(function(r) { if (!r.fromLike && !r.fromRating) return; var d = r.director || '(미상)'; byDir[d] = byDir[d] || { up: 0, dn: 0 }; if (r.fromLike) byDir[d].up++; else byDir[d].dn++; });
+  var dirStr = Object.keys(byDir).map(function(d) { return d + ' ' + byDir[d].up + '/' + byDir[d].dn; }).join(' · ') || '아직 없음';
+  var cards = [
+    ['최근 30일 👍 / 👎', likes + ' / ' + dislikes, total ? Math.round(likes / total * 100) + '% 만족' : '', total && likes / total >= 0.7 ? 'good' : (total ? 'bad' : '')],
+    ['검증 세트 (👍 + 승인)', liked + ' + ' + approved, '자동 평가 정답지', ''],
+    ['검색 근거로 반영', embedded + '건', '👍·승인 답변 청크', ''],
+    ['디렉터별 👍/👎 (30일)', dirStr, '', ''],
+  ];
+  el.innerHTML = cards.map(function(c) {
+    return '<div class="stat"><div class="k">' + esc(c[0]) + '</div><div class="v ' + c[3] + '" style="' + (c[1].length > 14 ? 'font-size:13px;line-height:1.5' : '') + '">' + esc(c[1]) + (c[2] ? '<small>' + esc(c[2]) + '</small>' : '') + '</div></div>';
+  }).join('');
+  el.hidden = false;
+}
+function render() { renderOwnerStats(); renderTabs(); renderList(); }
 
 // ─── 편집기 ─────────────────────────────────────────────────────────────────
 function openEditor(row) {
@@ -301,7 +343,7 @@ function openEditor(row) {
         (readOnly ? '<div class="locked">✅ 승인된 항목입니다. 이미 AI 피드백에 반영되고 있어요.<br>수정과 승인 해제는 커밍쏜만 할 수 있습니다.</div>' : '') +
         (r.fromRating ? '<div class="locked">👎 디렉터가 아쉬움을 표시한 AI 답변입니다. 아래 답변을 커밍쏜 기조로 고쳐 승인하면 다음부터 그 답이 반영됩니다.' +
           (r.ratingComment ? '<br><b>아쉬운 점:</b> ' + esc(r.ratingComment) : '') + '</div>' : '') +
-        (r.fromLike ? '<div class="locked">👍 디렉터가 "좋다"고 올린 AI 답변입니다. 검수 후 승인하면 비슷한 질문에 이 기조가 반영됩니다.' +
+        (r.fromLike ? '<div class="locked">👍 디렉터가 "좋다"고 올린 답변입니다. 승인하지 않아도 <b>다른 수강생의 비슷한 질문에 참고 근거로 검색</b>되고, 자동 평가의 정답지로 쓰입니다.<br>승인은 자주 오는 질문처럼 답을 <b>고정</b>할 가치가 있을 때만 하세요(승인하면 모든 답변의 프롬프트에 들어갑니다).' +
           (r.likeNote ? '<br><b>좋았던 점:</b> ' + esc(r.likeNote) : '') + (r.director ? '<br><b>올린 디렉터:</b> ' + esc(r.director) : '') + '</div>' : '') +
         '<div class="field"><label>질문 <span class="req">*</span></label>' +
           '<input id="pbQ" maxlength="500" placeholder="예: 조회수가 잘 안 나와요, 뭐가 문제일까요"></div>' +
@@ -380,7 +422,9 @@ function openEditor(row) {
     if (!data.answer.trim())   { msg.className = 'msg err'; msg.textContent = '답변을 입력해주세요'; return; }
     if (btn) btn.disabled = true;
     try {
-      await window.PMFire.savePlaybook(editing && editing.id, data);
+      var savedId = await window.PMFire.savePlaybook(editing && editing.id, data);
+      // 승인·수정은 검색 근거(검증 답변 청크)에 반영한다. 커밍쏜 계정만 호출된다.
+      if (isOwner()) { try { await embedApi({ kind: 'playbook', id: savedId || (editing && editing.id), action: 'upsert' }); } catch (e2) { console.warn('검색 반영 실패:', e2.message); } }
       close();
       await reload();
     } catch (e) {
@@ -403,7 +447,11 @@ function openEditor(row) {
   };
   if ($('pbDel')) $('pbDel').onclick = async function() {
     if (!confirm('이 항목을 삭제할까요? 되돌릴 수 없습니다.')) return;
-    try { await window.PMFire.deletePlaybook(editing.id); close(); await reload(); }
+    try {
+      await window.PMFire.deletePlaybook(editing.id);
+      if (isOwner()) { try { await embedApi({ kind: 'playbook', id: editing.id, action: 'delete' }); } catch (e2) {} }
+      close(); await reload();
+    }
     catch (e) { $('pbMsg').className = 'msg err'; $('pbMsg').textContent = '삭제 실패: ' + e.message; }
   };
 
@@ -442,7 +490,7 @@ function evalRowHtml(r) {
   return '<div class="ev-row">' +
     '<span class="' + scoreClass(r.score) + '">' + (r.score || '–') + '</span>' +
     '<b>' + esc(r.question || '') + '</b>' +
-    '<span class="sub" style="display:inline;margin-left:8px;color:var(--ink-soft)">' + esc(r.verdict || '') +
+    '<span class="sub" style="display:inline;margin-left:8px;color:var(--ink-soft)">' + esc(r.verdict || '') + (r.set === 'liked' ? ' · 👍 세트' : '') +
       (r.skipPlaybook ? ' · 플레이북 제외' : '') + (r.createdAt ? ' · ' + new Date(r.createdAt).toLocaleString('ko-KR') : '') + '</span>' +
     '<div class="rs">' + esc(r.reason || '') + '</div>' +
     '<details><summary>AI 답변 / 승인 답변 보기</summary>' +
@@ -468,8 +516,10 @@ function openEval() {
           '<b>플레이북 제외</b>를 켜면 승인 답변을 프롬프트에서 빼고 답하게 해, 자료·지침만으로 기조가 나오는지 봅니다.</div>' +
         '<div class="ev-opts">' +
           '<label>건수 <select id="evN"><option>3</option><option selected>5</option><option>8</option><option>10</option></select></label>' +
+          '<label>정답지 <select id="evSrc"><option value="both" selected>승인 + 👍</option><option value="approved">승인만</option><option value="liked">👍만</option></select></label>' +
           '<label class="mine"><input type="checkbox" id="evSkip"> 플레이북 제외</label>' +
           '<button class="btn btn-primary" id="evRun">실행</button>' +
+          '<button class="btn btn-ghost" id="evReembed" title="👍·승인 답변을 검색 근거로 전부 다시 반영">🔁 검색 근거 재반영</button>' +
           '<span class="msg" id="evMsg"></span>' +
         '</div>' +
         '<div id="evList"><div class="empty">불러오는 중…</div></div>' +
@@ -494,13 +544,19 @@ function openEval() {
     var btn = $('evRun'), msg = $('evMsg');
     btn.disabled = true; msg.className = 'msg ok'; msg.textContent = '평가 중… 건당 20~40초';
     try {
-      var d = await evalApi('POST', { limit: Number($('evN').value), skipPlaybook: $('evSkip').checked });
+      var d = await evalApi('POST', { limit: Number($('evN').value), skipPlaybook: $('evSkip').checked, source: $('evSrc').value });
       msg.textContent = '완료 · 평균 ' + d.avg + '점 (' + d.count + '건)';
       var prev = [];
       try { prev = (await evalApi('GET')).evals || []; } catch (e) {}
       paint(prev, '');
     } catch (e) { msg.className = 'msg err'; msg.textContent = '실패: ' + e.message; }
     btn.disabled = false;
+  };
+  $('evReembed').onclick = async function() {
+    var b = $('evReembed'), msg = $('evMsg'); b.disabled = true; msg.className = 'msg ok'; msg.textContent = '재반영 중…';
+    try { var d = await embedApi({ kind: 'playbook', action: 'all' }); msg.textContent = '검색 근거 재반영 완료 · 청크 ' + d.chunks + '개 (' + d.docs + '건 검사)'; await reload(); }
+    catch (e) { msg.className = 'msg err'; msg.textContent = '재반영 실패: ' + e.message; }
+    b.disabled = false;
   };
   loadPrev();
 }

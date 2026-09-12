@@ -16,7 +16,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { requireOwner } from './_auth.js';
-import { loadPlaybook, addEval, listEvals, firestoreEnabled } from './_firestore.js';
+import { loadPlaybook, loadLikedPlaybook, addEval, listEvals, firestoreEnabled } from './_firestore.js';
 import { claudeHeaders, claudeBody, pickText } from './_claude.js';
 import feedback from './feedback.js';
 
@@ -95,11 +95,14 @@ export default async function handler(req, res) {
   const KEY = process.env.CLAUDE_API_KEY;
   if (!KEY) return res.status(500).json({ error: 'CLAUDE_API_KEY not configured' });
 
-  const { limit = 5, skipPlaybook = false, ids = [] } = req.body || {};
+  const { limit = 5, skipPlaybook = false, ids = [], source = 'both' } = req.body || {};
   const n = Math.max(1, Math.min(10, Number(limit) || 5));   // 한 번에 10건까지 (300초 한도)
 
   try {
-    const all = (await loadPlaybook()) || [];
+    // 정답지: 승인 Q&A + 디렉터 👍 세트. source 로 고를 수 있다.
+    const approved = source === 'liked' ? [] : ((await loadPlaybook()) || []);
+    const liked = source === 'approved' ? [] : await loadLikedPlaybook();
+    const all = [...approved, ...liked];
     let picked = Array.isArray(ids) && ids.length ? all.filter((p) => ids.includes(p.id)) : all;
     if (!picked.length) return res.status(400).json({ error: '평가할 승인 Q&A 가 없습니다' });
     // 지정이 없으면 무작위로 뽑는다 — 매번 같은 것만 보지 않도록.
@@ -110,7 +113,7 @@ export default async function handler(req, res) {
     const results = [];
     for (const p of picked) {
       const t0 = Date.now();
-      let row = { runId, playbookId: p.id, question: p.q, expected: p.answer, skipPlaybook: !!skipPlaybook, by: user.email };
+      let row = { runId, playbookId: p.id, question: p.q, expected: p.answer, skipPlaybook: !!skipPlaybook, by: user.email, set: p.liked ? 'liked' : 'approved' };
       try {
         const actual = await ask(p.q, p.category, skipPlaybook);
         const j = await judge(p.q, p.answer, actual, KEY);

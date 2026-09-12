@@ -10,7 +10,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { requireOwner } from './_auth.js';
-import { upsertKbChunks, deleteKbChunks } from './_vectors.js';
+import { upsertKbChunks, deleteKbChunks, upsertPlaybookChunk, deletePlaybookChunks, reembedAllPlaybook } from './_vectors.js';
 
 export const config = { maxDuration: 300 };
 
@@ -23,7 +23,26 @@ export default async function handler(req, res) {
 
   if (!(await requireOwner(req, res))) return;
 
-  const { id, action = 'upsert' } = req.body || {};
+  const { id, action = 'upsert', kind = 'kb' } = req.body || {};
+
+  // 플레이북 검증 답변(👍·승인) — 커밍쏜이 승인/수정/삭제할 때 호출된다.
+  if (kind === 'playbook') {
+    const KEY = process.env.GEMINI_API_KEY;
+    try {
+      if (action === 'all') {
+        if (!KEY) return res.status(500).json({ error: 'GEMINI_API_KEY not configured' });
+        return res.status(200).json(Object.assign({ ok: true }, await reembedAllPlaybook(KEY)));
+      }
+      if (!id || typeof id !== 'string') return res.status(400).json({ error: 'id 가 필요합니다' });
+      if (action === 'delete') return res.status(200).json({ ok: true, removed: await deletePlaybookChunks(id) });
+      if (!KEY) return res.status(500).json({ error: 'GEMINI_API_KEY not configured' });
+      return res.status(200).json({ ok: true, chunks: await upsertPlaybookChunk(id, KEY) });
+    } catch (e) {
+      console.error('[kb-embed/playbook]', e.message);
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
   if (!id || typeof id !== 'string') return res.status(400).json({ error: 'id 가 필요합니다' });
 
   try {

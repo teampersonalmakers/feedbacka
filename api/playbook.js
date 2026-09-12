@@ -2,6 +2,7 @@
 // Firestore 가 정본. 상태가 '승인'으로 바뀌기 전까지는 프롬프트에 들어가지 않는다.
 
 import { addPlaybookDraft, firestoreEnabled } from './_firestore.js';
+import { upsertPlaybookChunk } from './_vectors.js';
 
 const NOTION_KEY = (process.env.NOTION_API_KEY || '').trim();
 const PLAYBOOK_DB_ID = (process.env.PLAYBOOK_DB_ID || '3b9818e3e2c94735b9f1d1c75bf73ff2').trim();
@@ -55,7 +56,15 @@ export default async function handler(req, res) {
   try {
     if (firestoreEnabled()) {
       const id = await addPlaybookDraft({ question, answer, category, note, student, cohort, director });
-      if (id) return res.status(200).json({ ok: true, store: 'firestore', id, url: '' });
+      if (id) {
+        // 👍 답변은 승인 전에도 다른 수강생 질문의 참고 근거로 검색된다.
+        let chunks = 0;
+        if (process.env.GEMINI_API_KEY) {
+          try { chunks = await upsertPlaybookChunk(id, process.env.GEMINI_API_KEY); }
+          catch (e) { console.warn('[playbook] 검증 답변 임베딩 실패(무시):', e.message); }
+        }
+        return res.status(200).json({ ok: true, store: 'firestore', id, url: '', chunks });
+      }
     }
 
     if (!NOTION_KEY) return res.status(500).json({ error: 'FIREBASE_SERVICE_ACCOUNT / NOTION_API_KEY 둘 다 설정되지 않았습니다' });
