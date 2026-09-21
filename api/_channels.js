@@ -125,8 +125,10 @@ async function yt(path, params, key) {
 // 키 자체가 못 쓰는 상태(미설정·API 미활성·한도 소진)인지 — 채널 하나가 아니라 전체를 웹 검색으로 돌려야 한다.
 export function isKeyLevelFailure(e) {
   if (!(e instanceof YtError)) return false;
-  return ['accessNotConfigured', 'keyInvalid', 'forbidden', 'quotaExceeded', 'dailyLimitExceeded', 'rateLimitExceeded', 'PERMISSION_DENIED'].includes(e.reason)
-    || e.status === 400 && /API key/i.test(e.message);
+  // 'required' = Login Required(401): 키가 이 API 에 안 맞는 경우(예: Gemini 키를 YouTube 에 쓸 때)
+  return ['accessNotConfigured', 'keyInvalid', 'forbidden', 'quotaExceeded', 'dailyLimitExceeded', 'rateLimitExceeded', 'PERMISSION_DENIED', 'required'].includes(e.reason)
+    || e.status === 401 || e.status === 403
+    || (e.status === 400 && /API key/i.test(e.message));
 }
 
 function isoDurationSec(d) {

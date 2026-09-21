@@ -269,7 +269,7 @@ async function probeYouTube() {
     const d = await r.json().catch(() => ({}));
     if (r.ok && !d.error) return { youtube: 'ok', keyFrom: process.env.YOUTUBE_API_KEY ? 'YOUTUBE_API_KEY' : 'GEMINI_API_KEY', webSearch: webSearchOn() };
     const e = (d.error && d.error.errors && d.error.errors[0]) || {};
-    return { youtube: 'error', reason: e.reason || String(r.status), webSearch: webSearchOn() };
+    return { youtube: 'error', reason: e.reason || String(r.status), message: String((d.error && d.error.message) || '').slice(0, 120), keyFrom: process.env.YOUTUBE_API_KEY ? 'YOUTUBE_API_KEY' : 'GEMINI_API_KEY', webSearch: webSearchOn() };
   } catch (e) { return { youtube: 'error', reason: e.message.slice(0, 80), webSearch: webSearchOn() }; }
 }
 
