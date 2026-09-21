@@ -34,6 +34,39 @@ main { flex:1; overflow-y:auto; }
 .atext b { font-weight:700; }
 .atext h4 { font-size:14.5px; margin:14px 0 6px; }
 .cursor { display:inline-block; width:8px; height:16px; background:var(--accent); border-radius:2px; animation:blink 1s infinite; vertical-align:text-bottom; }
+/* ─── 메모: 답변 옆 (넓은 화면) / 아래 (좁은 화면) ─── */
+.msg-a { flex-wrap:wrap; }
+.notes { width:232px; display:flex; flex-direction:column; gap:8px; align-self:flex-start; }
+.notes:empty { display:none; }
+.note { background:#fff8db; border:1px solid #f0dc8a; border-radius:10px; padding:9px 11px; font-size:12px; line-height:1.55; color:#3d3410; position:relative; }
+.note .nq { font-size:11px; color:#8a7a2a; border-left:2px solid #e2c85a; padding-left:7px; margin-bottom:5px; white-space:pre-wrap; word-break:break-word; }
+.note .nt { white-space:pre-wrap; word-break:break-word; }
+.note .nx { position:absolute; top:5px; right:7px; border:0; background:none; color:#a8963c; cursor:pointer; font-size:12px; opacity:0; }
+.note:hover .nx { opacity:1; }
+.note .nm { font-size:10px; color:#a8963c; margin-top:5px; }
+@media (max-width:1180px) { .notes { width:100%; margin-left:42px; } }
+#memoBtn { position:absolute; z-index:60; display:none; border:0; background:var(--ink); color:#fff; font-size:12px; font-weight:700; padding:6px 11px; border-radius:8px; box-shadow:0 6px 20px rgba(16,24,40,.25); cursor:pointer; font-family:var(--font); }
+#memoBtn:hover { background:var(--accent); }
+.memo-pop { position:absolute; z-index:61; width:min(340px, calc(100vw - 32px)); background:#fff; border:1px solid var(--border); border-radius:12px; box-shadow:0 14px 40px rgba(16,24,40,.18); padding:12px; font-family:var(--font); }
+.memo-pop .mq { font-size:11.5px; color:var(--ink-mid); background:#fff8db; border-left:2px solid #e2c85a; padding:6px 9px; border-radius:6px; margin-bottom:8px; max-height:72px; overflow:auto; white-space:pre-wrap; }
+.memo-pop textarea { width:100%; border:1px solid var(--border); border-radius:8px; padding:8px 10px; font-size:13px; font-family:var(--font); line-height:1.55; resize:vertical; min-height:64px; }
+.memo-pop textarea:focus { outline:none; border-color:var(--accent); }
+.memo-pop .row { display:flex; gap:6px; justify-content:flex-end; margin-top:8px; }
+.memo-pop .row button { border:1px solid var(--border); background:#fff; border-radius:8px; padding:6px 12px; font-size:12px; font-weight:600; cursor:pointer; font-family:var(--font); color:var(--ink-mid); }
+.memo-pop .row button.pri { background:var(--accent); border-color:var(--accent); color:#fff; }
+/* 메모 모아보기 */
+.memo-back { position:fixed; inset:0; z-index:200; background:rgba(26,29,35,.45); display:flex; align-items:center; justify-content:center; padding:20px; }
+.memo-modal { background:#fff; border-radius:14px; width:min(720px,100%); max-height:88vh; overflow:auto; box-shadow:0 24px 70px rgba(16,24,40,.22); }
+.memo-modal .mh { padding:16px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:10px; position:sticky; top:0; background:#fff; }
+.memo-modal .mh h3 { font-size:15px; flex:1; }
+.memo-modal .mb { padding:14px 20px; display:flex; flex-direction:column; gap:10px; }
+.memo-modal .mi { border:1px solid var(--border); border-radius:10px; padding:10px 12px; font-size:13px; }
+.memo-modal .mi .k { font-size:11px; color:var(--ink-soft); margin-bottom:4px; }
+.memo-modal .mi .nq { font-size:12px; color:#8a7a2a; border-left:2px solid #e2c85a; padding-left:8px; margin:4px 0; white-space:pre-wrap; }
+.memo-modal .mi .nt { white-space:pre-wrap; }
+.memo-modal .mf { padding:12px 20px; border-top:1px solid var(--border); display:flex; gap:8px; justify-content:flex-end; position:sticky; bottom:0; background:#fff; }
+.memo-modal .mf button, .memo-modal .mh button { border:1px solid var(--border); background:#fff; border-radius:8px; padding:7px 13px; font-size:12.5px; font-weight:600; cursor:pointer; font-family:var(--font); color:var(--ink-mid); }
+.memo-modal .mf button.pri { background:var(--accent); border-color:var(--accent); color:#fff; }
 @keyframes blink { 50% { opacity:.2; } }
 </style>
 </head>
@@ -140,6 +173,8 @@ textarea#inp:focus { outline:none; border-color:var(--accent); }
       <button class="attbtn" id="attBtn" title="워크시트 캡처 첨부 (OCR)" onclick="document.getElementById('file').click()">📎</button>
       <input type="file" id="file" accept="image/*" style="display:none" onchange="onFile(this)">
       <span class="att-label" id="attLabel"><span id="attName"></span><span class="x" onclick="clearAtt()">✕</span></span>
+      <span style="flex:1"></span>
+      <button class="attbtn" id="memoAll" type="button" title="이 대화의 메모를 한 곳에 모아 보기" onclick="openMemoAll()" style="display:none;font-size:12px;font-weight:600">📝 메모 0</button>
     </div>
     <div class="inrow">
       <textarea id="inp" rows="1" placeholder="무엇이든 물어보세요… (Shift+Enter 줄바꿈)"></textarea>
@@ -243,9 +278,10 @@ function renderAll() {
     w.appendChild(buildEmpty());
     return;
   }
+  if (typeof updateMemoCount === 'function') setTimeout(updateMemoCount, 0);
   turns.forEach(function(t) {
     w.appendChild(userBubble(t.q, t.att, t.attUrl, t.attName, t.ts));
-    if (t.a != null) { var b = aiBubble(); b.text.innerHTML = md(t.a); addActions(b, t.q, t.a, t.sources, t.evidence); }
+    if (t.a != null) { var b = aiBubble(); b.text.innerHTML = md(t.a); b.wrap._turn = t; addActions(b, t.q, t.a, t.sources, t.evidence); renderNotes(b.wrap); }
   });
   scrollBottom();
 }
@@ -292,9 +328,10 @@ function aiBubble() {
   var av = document.createElement('div'); av.className = 'avatar'; av.textContent = 'P';
   var bub = document.createElement('div'); bub.className = 'bubble';
   var tx = document.createElement('div'); tx.className = 'atext';
-  bub.appendChild(tx); wrap.appendChild(av); wrap.appendChild(bub);
+  var notes = document.createElement('div'); notes.className = 'notes';
+  bub.appendChild(tx); wrap.appendChild(av); wrap.appendChild(bub); wrap.appendChild(notes);
   document.getElementById('msgs').appendChild(wrap);
-  return { wrap: wrap, bubble: bub, text: tx };
+  return { wrap: wrap, bubble: bub, text: tx, notes: notes };
 }
 function addSources(b, sources) {
   if (!sources || !sources.length) return;
@@ -382,10 +419,114 @@ function addActions(b, q, a, sources, evidence) {
       .then(function(d) { dn.textContent = d && d.playbookId ? '👎 플레이북 수정 후보로 올렸어요' : '👎 기록됨'; })
       .catch(function() { dn.textContent = '👎 기록됨'; });
   };
-  ad.appendChild(up); ad.appendChild(dn); ad.appendChild(cp);
+  var memo = document.createElement('button'); memo.className = 'act'; memo.textContent = '📝 메모';
+  memo.dataset.tip = '이 답변에 메모를 남깁니다. 문장을 드래그하면 그 부분에 바로 메모할 수 있어요';
+  memo.onclick = function() { openMemoPop(b.wrap, '', memo); };
+  ad.appendChild(up); ad.appendChild(dn); ad.appendChild(cp); ad.appendChild(memo);
 
   b.bubble.appendChild(ad);
   if (b.bubble._ev) b.bubble.appendChild(b.bubble._ev);
+}
+// ─── 메모: 답변을 보며 드래그 → '+ 메모하기' → 답변 옆에 붙는다. 대화와 함께 저장. ───
+function memoTs(ts) { var d = new Date(ts); return (d.getMonth() + 1) + '.' + d.getDate() + ' ' + d.toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' }); }
+function renderNotes(wrap) {
+  var t = wrap._turn, box = wrap.querySelector('.notes'); if (!t || !box) return;
+  box.innerHTML = '';
+  (t.notes || []).forEach(function(n) {
+    var d = document.createElement('div'); d.className = 'note';
+    if (n.quote) { var q = document.createElement('div'); q.className = 'nq'; q.textContent = n.quote; d.appendChild(q); }
+    var tx = document.createElement('div'); tx.className = 'nt'; tx.textContent = n.text; d.appendChild(tx);
+    var m = document.createElement('div'); m.className = 'nm'; m.textContent = memoTs(n.ts); d.appendChild(m);
+    var x = document.createElement('button'); x.className = 'nx'; x.textContent = '✕'; x.title = '메모 삭제';
+    x.onclick = function() { t.notes = (t.notes || []).filter(function(z) { return z.id !== n.id; }); renderNotes(wrap); saveChat(); updateMemoCount(); };
+    d.appendChild(x);
+    box.appendChild(d);
+  });
+}
+function addNote(wrap, quote, text) {
+  var t = wrap._turn; if (!t) return;
+  t.notes = t.notes || [];
+  t.notes.push({ id: String(Date.now()) + Math.random().toString(36).slice(2, 6), quote: String(quote || '').slice(0, 300), text: String(text || '').trim().slice(0, 2000), ts: Date.now() });
+  renderNotes(wrap); saveChat(); updateMemoCount();
+}
+var memoBtn = document.createElement('button'); memoBtn.id = 'memoBtn'; memoBtn.type = 'button'; memoBtn.textContent = '＋ 메모하기'; document.body.appendChild(memoBtn);
+var memoSel = null;   // { wrap, quote }
+function hideMemoBtn() { memoBtn.style.display = 'none'; memoSel = null; }
+function onSelect() {
+  var sel = window.getSelection(); if (!sel || sel.isCollapsed || !sel.rangeCount) return hideMemoBtn();
+  var text = sel.toString().trim(); if (text.length < 2) return hideMemoBtn();
+  var node = sel.anchorNode; var el = node && (node.nodeType === 1 ? node : node.parentElement);
+  var atext = el && el.closest ? el.closest('.atext') : null; if (!atext) return hideMemoBtn();
+  var wrap = atext.closest('.msg-a'); if (!wrap || !wrap._turn) return hideMemoBtn();
+  var r = sel.getRangeAt(0).getBoundingClientRect();
+  memoSel = { wrap: wrap, quote: text };
+  memoBtn.style.display = 'block';
+  memoBtn.style.left = Math.max(8, Math.min(window.innerWidth - 120, r.right + window.scrollX - 60)) + 'px';
+  memoBtn.style.top = (r.top + window.scrollY - 40) + 'px';
+}
+document.addEventListener('mouseup', function(e) { if (e.target === memoBtn || e.target.closest('.memo-pop')) return; setTimeout(onSelect, 10); });
+document.addEventListener('keyup', function(e) { if (e.shiftKey) setTimeout(onSelect, 10); });
+document.addEventListener('mousedown', function(e) { if (e.target !== memoBtn && !e.target.closest('.memo-pop')) hideMemoBtn(); });
+document.getElementById('main').addEventListener('scroll', hideMemoBtn);
+memoBtn.onmousedown = function(e) { e.preventDefault(); };
+memoBtn.onclick = function() { if (!memoSel) return; var s = memoSel; hideMemoBtn(); openMemoPop(s.wrap, s.quote, null); };
+function openMemoPop(wrap, quote, anchorEl) {
+  document.querySelectorAll('.memo-pop').forEach(function(p) { p.remove(); });
+  var pop = document.createElement('div'); pop.className = 'memo-pop';
+  pop.innerHTML = (quote ? '<div class="mq"></div>' : '') + '<textarea placeholder="메모를 입력하세요 (Ctrl+Enter 저장)"></textarea><div class="row"><button type="button" class="cancel">취소</button><button type="button" class="pri">저장</button></div>';
+  if (quote) pop.querySelector('.mq').textContent = quote;
+  document.body.appendChild(pop);
+  var ref = anchorEl ? anchorEl.getBoundingClientRect() : (function() { var s = window.getSelection(); return s && s.rangeCount ? s.getRangeAt(0).getBoundingClientRect() : wrap.getBoundingClientRect(); })();
+  pop.style.left = Math.max(8, Math.min(window.innerWidth - pop.offsetWidth - 8, ref.left + window.scrollX)) + 'px';
+  pop.style.top = (ref.bottom + window.scrollY + 8) + 'px';
+  var ta = pop.querySelector('textarea'); ta.focus();
+  var close = function() { pop.remove(); };
+  pop.querySelector('.cancel').onclick = close;
+  pop.querySelector('.pri').onclick = function() { if (ta.value.trim()) addNote(wrap, quote, ta.value); close(); };
+  ta.addEventListener('keydown', function(e) { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) pop.querySelector('.pri').click(); if (e.key === 'Escape') close(); });
+}
+function allNotes() {
+  var out = [];
+  turns.forEach(function(t, i) { (t.notes || []).forEach(function(n) { out.push({ turn: i, q: t.q, n: n }); }); });
+  return out;
+}
+function updateMemoCount() { var b = document.getElementById('memoAll'); if (b) { var n = allNotes().length; b.textContent = '📝 메모 ' + n; b.style.display = n ? '' : 'none'; } }
+function notesAsText() {
+  var c = activeConv && activeConv();
+  var head = '[' + ((c && c.title) || '대화') + ']' + (c && c.student ? ' ' + c.student + (c.cohort ? ' · ' + c.cohort : '') : '') + '\n' + new Date().toLocaleDateString('ko-KR') + '\n\n';
+  return head + allNotes().map(function(x, i) { return (i + 1) + '. ' + (x.n.quote ? '"' + x.n.quote + '"\n   → ' : '') + x.n.text; }).join('\n\n');
+}
+function openMemoAll() {
+  var list = allNotes();
+  var back = document.createElement('div'); back.className = 'memo-back';
+  back.innerHTML = '<div class="memo-modal"><div class="mh"><h3>📝 이 대화의 메모 ' + list.length + '개</h3><button type="button" class="close">닫기</button></div><div class="mb"></div>' +
+    '<div class="mf"><button type="button" class="copy">전체 복사</button><button type="button" class="pri send">플레이북 답변으로 올리기</button></div></div>';
+  var mb = back.querySelector('.mb');
+  if (!list.length) mb.innerHTML = '<div style="color:var(--ink-soft);font-size:13px;padding:20px;text-align:center">아직 메모가 없습니다. 답변 문장을 드래그하면 ＋ 메모하기가 뜹니다.</div>';
+  list.forEach(function(x, i) {
+    var d = document.createElement('div'); d.className = 'mi';
+    var k = document.createElement('div'); k.className = 'k'; k.textContent = (i + 1) + ' · 질문: ' + x.q.slice(0, 60) + (x.q.length > 60 ? '…' : '') + ' · ' + memoTs(x.n.ts); d.appendChild(k);
+    if (x.n.quote) { var q = document.createElement('div'); q.className = 'nq'; q.textContent = x.n.quote; d.appendChild(q); }
+    var t = document.createElement('div'); t.className = 'nt'; t.textContent = x.n.text; d.appendChild(t);
+    mb.appendChild(d);
+  });
+  document.body.appendChild(back);
+  var close = function() { back.remove(); };
+  back.querySelector('.close').onclick = close; back.onclick = function(e) { if (e.target === back) close(); };
+  back.querySelector('.copy').onclick = function(ev) { navigator.clipboard.writeText(notesAsText()); ev.target.textContent = '✓ 복사됨'; setTimeout(function() { ev.target.textContent = '전체 복사'; }, 1500); };
+  // 메모를 모아 플레이북 승인 후보로: 질문 = 대화 제목, 답변 = 메모 모음. 커밍쏜이 검수한다.
+  back.querySelector('.send').onclick = async function(ev) {
+    if (!list.length) return;
+    var btn = ev.target; btn.disabled = true; btn.textContent = '올리는 중…';
+    try {
+      var c = activeConv && activeConv();
+      var r = await fetch('/api/playbook', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+        question: (c && c.title) || turns[0].q.slice(0, 200), answer: notesAsText(), note: '컨설팅 메모 모음', student: document.getElementById('stuName').value.trim(), cohort: cohortVal(),
+        director: (window.PMFire && window.PMFire.profile && window.PMFire.profile.nickname) || '' }) });
+      var d = await r.json(); if (d.error) throw new Error(d.error);
+      btn.textContent = '✓ 플레이북에 올렸어요';
+    } catch (e) { btn.disabled = false; btn.textContent = '플레이북 답변으로 올리기'; alert('실패: ' + e.message); }
+  };
 }
 function saveChat() { try { localStorage.setItem('pm_chat_v1', JSON.stringify(turns.slice(-30))); } catch(e) {} }
 function loadChat() { try { turns = JSON.parse(localStorage.getItem('pm_chat_v1') || '[]'); } catch(e) { turns = []; } }
@@ -424,7 +565,7 @@ async function send() {
   turns.push(turn);
   saveChat();   // 질문을 먼저 저장 — 답변 도중 탭이 닫혀도 질문은 남는다
   document.getElementById('msgs').appendChild(userBubble(turn.q, hadAtt, turn.attUrl, turn.attName, turn.ts));
-  var b = aiBubble();
+  var b = aiBubble(); b.wrap._turn = turn;
   b.text.innerHTML = '<span class="cursor"></span>';
   scrollBottom();
   t.value = ''; autoGrow(); clearAtt();

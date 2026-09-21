@@ -504,6 +504,7 @@ function gateFatal(detail) {
             att: !!v.att, attUrl: v.attUrl || '', attName: v.attName || '',
             sources: v.sources || [],
             evidence: v.evidence || null,
+            notes: v.notes || [],
           };
         });
       },
@@ -531,6 +532,8 @@ function gateFatal(detail) {
           sources: (turn.sources || []).slice(0, 20).map((s) => ({
             docName: cut((s && (s.docName || s.name)) || String(s), 200),
           })),
+          // 디렉터 메모 (답변 옆 노란 카드)
+          notes: (turn.notes || []).slice(0, 40).map((n) => ({ id: cut(String(n.id || ''), 40), quote: cut(n.quote || '', 300), text: cut(n.text || '', 2000), ts: Number(n.ts) || 0 })),
           // 답변 근거(🔍 근거 보기). 다른 기기에서 열어도 보이도록 짧게 보관한다.
           evidence: turn.evidence ? {
             sources: (turn.evidence.sources || []).slice(0, 8).map((x) => ({
