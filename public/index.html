@@ -72,6 +72,13 @@ main { flex:1; overflow-y:auto; }
 </head>
 <style>
 .srcs { display:flex; flex-wrap:wrap; gap:6px; margin-top:12px; }
+/* 롤모델 채널 리서치 — 어떤 채널의 실제 데이터를 보고 답했는지. 모든 계정에 보인다. */
+.research { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:12px; font-size:11.5px; color:var(--ink-soft); }
+.research .rlabel { font-weight:600; color:var(--ink-mid); }
+.research a, .research span.ch { background:var(--bg); border:1px solid var(--border); border-radius:5px; padding:3px 8px; color:var(--ink-mid); text-decoration:none; max-width:300px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.research a:hover { border-color:var(--accent); color:var(--accent); }
+.research span.ch.miss { color:var(--ink-soft); border-style:dashed; }
+.stat { font-size:12px; color:var(--ink-soft); margin-top:6px; }
 .src { font-size:10.5px; background:var(--bg); border:1px solid var(--border); border-radius:5px; padding:3px 8px; color:var(--ink-soft); max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .acts { display:flex; gap:8px; margin-top:12px; padding-top:12px; border-top:1px solid var(--border); flex-wrap:wrap; }
 .evid { margin-top:10px; border:1px solid var(--border); border-radius:10px; background:var(--bg); padding:10px 12px; font-size:12px; color:var(--ink-mid); }
@@ -373,7 +380,37 @@ function buildEvidence(ev) {
 // 근거(📎 자료 칩 + 🔍 근거 보기)는 커밍쏜 계정에만 보인다. 디렉터에게는 답변만.
 // 데이터는 그대로 저장되므로 나중에 다시 켜도 과거 답변의 근거가 남아 있다.
 function canSeeEvidence() { return !!(window.PMFire && window.PMFire.isOwner && window.PMFire.isOwner()); }
+// 📺 채널 리서치 줄 — 롤모델 채널의 실제 데이터를 조회해 답했다는 표시. 근거와 달리 디렉터에게도 보인다.
+function fmtKo(n) {
+  n = Number(n) || 0;
+  if (n < 0) return '비공개';
+  if (n >= 1e8) return (Math.round(n / 1e7) / 10) + '억';
+  if (n >= 1e4) return (n >= 1e6 ? Math.round(n / 1e4) : Math.round(n / 1e3) / 10) + '만';
+  return String(n);
+}
+function addResearch(b, evidence) {
+  var chs = (evidence && evidence.channels) || [];
+  if (!chs.length) return;
+  var d = document.createElement('div'); d.className = 'research';
+  var lb = document.createElement('span'); lb.className = 'rlabel'; lb.textContent = '📺 채널 리서치'; d.appendChild(lb);
+  chs.forEach(function(c) {
+    var el;
+    if (c.resolved) {
+      el = document.createElement(c.url ? 'a' : 'span'); el.className = 'ch';
+      if (c.url) { el.href = c.url; el.target = '_blank'; el.rel = 'noopener'; }
+      el.textContent = c.name + ' · 구독 ' + fmtKo(c.subscribers) + (c.perMonth ? ' · 월 ' + c.perMonth + '편' : '');
+      el.title = 'YouTube 공개 데이터로 조회했습니다';
+    } else {
+      el = document.createElement('span'); el.className = 'ch miss';
+      el.textContent = c.name + ' · 자동 조회 안 됨(웹 검색)';
+      el.title = 'YouTube 데이터 조회가 안 돼 웹 검색으로 확인했습니다. 숫자는 참고만 하세요.';
+    }
+    d.appendChild(el);
+  });
+  b.bubble.appendChild(d);
+}
 function addActions(b, q, a, sources, evidence) {
+  addResearch(b, evidence);
   if (canSeeEvidence()) addSources(b, sources);
   var ad = document.createElement('div'); ad.className = 'acts';
   if (evidence && canSeeEvidence()) {
@@ -603,6 +640,7 @@ async function send() {
           var o; try { o = JSON.parse(data); } catch(e) { continue; }
           if (ev === 'meta') { turn.sources = o.sources || []; turn.evidence = o.evidence || null; }
           else if (ev === 'delta' && o.t) { acc += o.t; b.text.innerHTML = md(acc) + '<span class="cursor"></span>'; scrollBottom(); }
+          else if (ev === 'status' && o.t) { b.text.innerHTML = md(acc) + '<span class="cursor"></span><div class="stat">' + o.t + '</div>'; scrollBottom(); }
           else if (ev === 'error') throw new Error(o.message || '스트리밍 오류');
         }
       }

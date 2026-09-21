@@ -25,18 +25,27 @@ export function claudeHeaders(apiKey) {
 
 // system: 문자열 또는 [{ type:'text', text, cache_control? }] 블록 배열
 // user  : 문자열 또는 콘텐츠 블록 배열(이미지 등)
+// opts:
+//   thinking : false 면 사고를 끈다 (짧은 추출·분류처럼 판단이 필요 없는 호출)
+//   fallbacks: false 면 서버 대체 모델을 쓰지 않는다
+//   tools    : 서버 도구 배열 (예: 웹 검색). 요청 프리픽스가 바뀌어 캐시가 새로 써지므로 필요한 요청에만 넣는다.
 export function claudeBody(system, user, opts = {}) {
-  const { stream = false, maxTokens = 12000, effort = 'medium', model = CLAUDE_MODEL } = opts;
+  const { stream = false, maxTokens = 12000, effort = 'medium', model = CLAUDE_MODEL, thinking = true, fallbacks = true, tools = null } = opts;
   return JSON.stringify({
     model,
     max_tokens: maxTokens,
     stream,
     ...(system ? { system } : {}),
+    ...(tools && tools.length ? { tools } : {}),
     messages: [{ role: 'user', content: user }],
-    thinking: { type: 'adaptive' },
-    output_config: { effort },
-    fallbacks: 'default',
+    ...(thinking ? { thinking: { type: 'adaptive' }, output_config: { effort } } : {}),
+    ...(fallbacks ? { fallbacks: 'default' } : {}),
   });
+}
+
+// Claude 웹 검색 서버 도구. 롤모델 채널이 YouTube API 로 조회되지 않았을 때만 붙인다.
+export function webSearchTool(maxUses = 3) {
+  return { type: 'web_search_20260209', name: 'web_search', max_uses: maxUses };
 }
 
 // 고정 블록에 캐시 마커. TTL 1시간 — 디렉터 사용이 하루 중 띄엄띄엄이라

@@ -9,8 +9,17 @@ import {
   firestoreEnabled,
   addMetrics,
 } from './_firestore.js';
-import { claudeHeaders, claudeBody, cachedBlock, pickText } from './_claude.js';
+import { claudeHeaders, claudeBody, cachedBlock, pickText, webSearchTool } from './_claude.js';
 import { embedQuery, searchChunks, searchChunksByOrigin, countChunks } from './_vectors.js';
+import { hasChannelSignal, extractChannelMentions, researchChannels, formatChannelBlock, summarizeChannels } from './_channels.js';
+import { todayKST } from './_firestore.js';
+
+// 롤모델 채널 조회용 YouTube Data API 키. 전용 키가 없으면 Gemini 키로 시도한다 —
+// 같은 GCP 프로젝트에서 YouTube Data API v3 를 켜 두었으면 그 키로도 된다.
+const youtubeKey = () => (process.env.YOUTUBE_API_KEY || process.env.GEMINI_API_KEY || '').trim();
+
+// 채널이 자동 조회되지 않았을 때 Claude 웹 검색을 붙일지. WEB_SEARCH=off 로 끌 수 있다.
+const webSearchOn = () => String(process.env.WEB_SEARCH || 'on').toLowerCase() !== 'off';
 
 // 이 인스턴스가 첫 요청을 받는 중인지. 콜드스타트 지연을 따로 보기 위해서다.
 let _coldInstance = true;
@@ -251,6 +260,19 @@ async function loadPlaybookFromNotion(notionKey) {
   }
 }
 
+// 롤모델 채널 조회가 실제로 되는지 — 상태 확인(GET)에서만 부른다. channels.list 1유닛.
+async function probeYouTube() {
+  const key = youtubeKey();
+  if (!key) return { youtube: 'no-key', webSearch: webSearchOn() };
+  try {
+    const r = await fetch('https://www.googleapis.com/youtube/v3/channels?part=id&forHandle=%40youtube&key=' + encodeURIComponent(key), { signal: AbortSignal.timeout(6000) });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok && !d.error) return { youtube: 'ok', keyFrom: process.env.YOUTUBE_API_KEY ? 'YOUTUBE_API_KEY' : 'GEMINI_API_KEY', webSearch: webSearchOn() };
+    const e = (d.error && d.error.errors && d.error.errors[0]) || {};
+    return { youtube: 'error', reason: e.reason || String(r.status), webSearch: webSearchOn() };
+  } catch (e) { return { youtube: 'error', reason: e.message.slice(0, 80), webSearch: webSearchOn() }; }
+}
+
 // 로컬 파일 폴백
 function loadGuidelinesFromFile() {
   try {
@@ -340,7 +362,9 @@ export default async function handler(req, res) {
         GEMINI_API_KEY: !!process.env.GEMINI_API_KEY,
         FIREBASE_SERVICE_ACCOUNT: !!process.env.FIREBASE_SERVICE_ACCOUNT,
         NOTION_API_KEY: !!process.env.NOTION_API_KEY,
+        YOUTUBE_API_KEY: !!process.env.YOUTUBE_API_KEY,
       },
+      channelResearch: await probeYouTube(),
       firestore: {
         enabled: fsOn,
         guidelines: g ? Object.keys(g.categoryGuidelines || {}).length + 6 : 0,
@@ -392,6 +416,31 @@ export default async function handler(req, res) {
     } catch(e) { console.warn('수강생 기록 로드 실패(무시):', e.message); }
   }
 
+  // ─── 롤모델 채널 리서치 ───
+  // 참여자가 적어 낸 롤모델 채널의 실제 데이터(구독자·업로드 빈도·최근 제목)를 조회한다.
+  // 검색과 나란히 돌리고, 프롬프트를 조립할 때 결과를 합친다. 실패해도 답변은 나간다.
+  // 대화 모드에서는 이전 질문(Q:)에 적힌 롤모델도 본다 — "저 채널들 분석해줘" 같은 후속 질문을 위해서.
+  let channelResearch = { profiles: [], unresolved: [], backend: 'none', keyFailed: false, mentions: 0 };
+  let channelPromise = null;
+  if (category !== 'creator' && question) {
+    const prevQs = [];
+    const qRe = /^Q: (.+)$/gm; let qm;
+    while ((qm = qRe.exec(String(req.body.extraContext || '')))) prevQs.push(qm[1]);
+    const mentionText = String(question) + '\n' + prevQs.join('\n');
+    if (hasChannelSignal(mentionText)) {
+      channelPromise = (async () => {
+        try {
+          const mentions = await extractChannelMentions(mentionText, CLAUDE_KEY);
+          mark('channelExtract');
+          if (!mentions.length) return;
+          const r = await researchChannels(mentions, youtubeKey());
+          mark('channelFetch');
+          channelResearch = Object.assign(r, { mentions: mentions.length });
+        } catch (e) { console.warn('채널 리서치 실패(무시):', e.message.slice(0, 120)); }
+      })();
+    }
+  }
+
   let hits = [];
   let vectorCases = null;   // 판단 카드(승인 사례) 벡터 검색 결과. null 이면 단어 겹침 폴백.
   if (GEMINI_KEY && question) {
@@ -432,6 +481,10 @@ export default async function handler(req, res) {
     }
     M.sources.rag = hits.map((h) => h.docName).filter(Boolean);
   }
+  if (channelPromise) await channelPromise;
+  M.sources.channels = channelResearch.profiles.length;
+  M.sources.channelsUnresolved = channelResearch.unresolved.length;
+  M.sources.channelsBackend = channelResearch.backend;
 
   // ── Creator 모드 ──────────────────────────────────────────────────────────────
   if (category === 'creator' && creatorOptions) {
@@ -529,7 +582,15 @@ ${outputList.includes('썸네일 아이디어') ? `## 🖼 썸네일 아이디�
     cases: relevantCases.map((c) => ({ summary: c.summary || '', cohort: c.cohort || '', text: String(c.body || '').slice(0, 600) })),
     playbook: playbook.length,
     studentMemory: M.sources.studentMemory,
+    channels: summarizeChannels(channelResearch.profiles, channelResearch.unresolved),
   };
+
+  // 롤모델 채널 블록 + 평가 지침. 데이터가 있을 때만 붙는다.
+  const channelBlock = formatChannelBlock(channelResearch.profiles, channelResearch.unresolved, todayKST());
+  const channelsBlock = channelBlock ? '\n\n' + channelBlock : '';
+  const useWebSearch = webSearchOn() && channelResearch.unresolved.length > 0;
+  const claudeTools = useWebSearch ? [webSearchTool(Math.min(channelResearch.unresolved.length + 1, 4))] : null;
+  if (useWebSearch) M.sources.channelsBackend = channelResearch.profiles.length ? 'youtube+websearch' : 'websearch';
 
   const corePhilosophy = (g.corePhilosophy || [
     '유튜브는 SNS가 아니라 비즈니스다. 채널은 브랜드고, 콘텐츠는 상품이다.',
@@ -587,6 +648,16 @@ ${isPublic
   ? '지금 대화하는 상대는 멤버십 회원입니다. 1:1 코칭을 받는 것처럼 따뜻하지만 솔직하게 대화하세요.'
   : '디렉터가 수강생 미션을 검토하는 상황입니다. 커밍쏜의 관점으로 피드백 방향을 제시해주세요.'}`;
 
+  if (channelBlock) {
+    VARIABLE_SYSTEM += `\n\n[롤모델 채널 평가 지침]
+참여자가 롤모델·벤치마킹 채널을 들었고 아래 user 턴에 '롤모델 채널 리서치' 블록이 있다. 각 채널을 커밍쏜의 기준으로 평가해 피드백에 녹인다.
+1) 주제 핏: 그 채널이 실제로 다루는 주제·타겟·메시지(채널 소개, 최근 영상 제목으로 판단)가 참여자의 주제·결핍·타겟과 맞는가. 참여자가 "왜 이 채널인지" 적은 이유가 소재 때문인지, 페르소나·서사·라이프스타일 때문인지 짚는다.
+2) 단계 핏: 구독자·업로드 빈도·조회 규모가 참여자의 지금 단계에서 따라할 수 있는 모델인가. 대형 채널이면 소재를 베끼는 게 아니라 '왜 되는지'(메시지·구조·페르소나)를 뽑아 준다. 숏폼 비율·업로드 빈도가 참여자의 리소스와 맞는지도 본다.
+3) 핏이 안 맞으면 솔직하게 말하고, 참여자의 결핍·타겟에 더 맞는 벤치마킹 방향을 제시한다.
+4) 숫자와 제목은 리서치 블록에 있는 값만 쓴다. 블록에 없는 수치·영상·사실을 기억으로 지어내지 않는다. '이름 검색 결과' 표시가 있으면 동명 채널일 수 있음을 한 줄 언급한다.
+5) 자동 조회가 안 된 채널은 ${useWebSearch ? 'web_search 도구로 "채널명 유튜브" 를 검색해 주제·규모·대표 콘텐츠를 확인한 뒤 평가한다. 채널당 검색 1회, 확인이 안 되면 모른다고 말한다.' : '데이터가 없다고 말하고 참여자가 적은 설명만으로 조심스럽게 판단한다.'}`;
+  }
+
   const contextStr = hits.length > 0
     ? hits.map((h, i) => `[참고 ${i+1} — ${h.docType === 'playbook' ? (h.verified === 'approved' ? '커밍쏜 승인 답변' : '디렉터 검증 답변') + ' · ' : ''}${h.docName}]\n${h.text}`).join('\n\n---\n\n')
     : '(검색된 참고 자료 없음 — 핵심 철학을 바탕으로 답변)';
@@ -595,19 +666,19 @@ ${isPublic
   let userPrompt;
   if (isPublic) {
     userPrompt = mode === 'structured'
-      ? `질문입니다.\n\n${question}\n\n---\n\n[참고 자료]\n${contextStr}${casesBlock}\n\n---\n\n아래 형식으로 답변해주세요:\n\n[핵심 답변]\n(가장 중요한 포인트)\n\n[구체적으로 이렇게 해보세요]\n(실행 가능한 액션 2~3가지)\n\n[한마디]\n(철학이 담긴 한 문장으로 마무리)`
-      : `질문입니다.\n\n${question}\n\n---\n\n[참고 자료]\n${contextStr}${casesBlock}\n\n---\n\n커밍쏜이 직접 대화하듯 구어체로 답변해주세요. 질문자의 상황을 먼저 이해하고, 핵심을 짚은 뒤, 다음 스텝으로 마무리. 300~500자 내외.`;
+      ? `질문입니다.\n\n${question}\n\n---\n\n[참고 자료]\n${contextStr}${casesBlock}${channelsBlock}\n\n---\n\n아래 형식으로 답변해주세요:\n\n[핵심 답변]\n(가장 중요한 포인트)\n\n[구체적으로 이렇게 해보세요]\n(실행 가능한 액션 2~3가지)\n\n[한마디]\n(철학이 담긴 한 문장으로 마무리)`
+      : `질문입니다.\n\n${question}\n\n---\n\n[참고 자료]\n${contextStr}${casesBlock}${channelsBlock}\n\n---\n\n커밍쏜이 직접 대화하듯 구어체로 답변해주세요. 질문자의 상황을 먼저 이해하고, 핵심을 짚은 뒤, 다음 스텝으로 마무리. 300~500자 내외.`;
   } else {
     userPrompt = mode === 'structured'
-      ? `${studentName ? studentName + (req.body.cohort ? ' (' + String(req.body.cohort).slice(0, 10) + ')' : '') : '수강생'}의 미션입니다.${extraContext ? `\n\n[디렉터 메모]\n${extraContext}` : ''}\n\n[제출 내용]\n${question}\n\n---\n\n[참고 자료]\n${contextStr}${casesBlock}\n\n---\n\n[✅ 잘 잡고 있는 방향]\n(2가지, 이유 포함)\n\n[🔧 더 디깅이 필요한 부분]\n(2~3가지)\n\n[💡 다음 스텝]\n(실행 가능한 액션 2~3가지)`
-      : `${studentName ? studentName + (req.body.cohort ? ' (' + String(req.body.cohort).slice(0, 10) + ')' : '') : '수강생'}의 미션입니다.${extraContext ? `\n\n[디렉터 메모]\n${extraContext}` : ''}\n\n[제출 내용]\n${question}\n\n---\n\n[참고 자료]\n${contextStr}${casesBlock}\n\n---\n\n커밍쏜이 직접 말해주듯 구어체로 피드백을 작성해주세요. Why와 서사를 먼저 짚고, 핵심 방향을 제시하고, 실행 가능한 다음 스텝으로 마무리. 400~600자 내외.`;
+      ? `${studentName ? studentName + (req.body.cohort ? ' (' + String(req.body.cohort).slice(0, 10) + ')' : '') : '수강생'}의 미션입니다.${extraContext ? `\n\n[디렉터 메모]\n${extraContext}` : ''}\n\n[제출 내용]\n${question}\n\n---\n\n[참고 자료]\n${contextStr}${casesBlock}${channelsBlock}\n\n---\n\n[✅ 잘 잡고 있는 방향]\n(2가지, 이유 포함)\n\n[🔧 더 디깅이 필요한 부분]\n(2~3가지)\n\n[💡 다음 스텝]\n(실행 가능한 액션 2~3가지)`
+      : `${studentName ? studentName + (req.body.cohort ? ' (' + String(req.body.cohort).slice(0, 10) + ')' : '') : '수강생'}의 미션입니다.${extraContext ? `\n\n[디렉터 메모]\n${extraContext}` : ''}\n\n[제출 내용]\n${question}\n\n---\n\n[참고 자료]\n${contextStr}${casesBlock}${channelsBlock}\n\n---\n\n커밍쏜이 직접 말해주듯 구어체로 피드백을 작성해주세요. Why와 서사를 먼저 짚고, 핵심 방향을 제시하고, 실행 가능한 다음 스텝으로 마무리. 400~600자 내외.`;
   }
 
   try {
     // ─── 대화(챗) 모드: 형식 제약 해제 + 커밍쏜 대화 원칙 ───
     if (req.body && req.body.chat) {
       VARIABLE_SYSTEM += '\n\n[대화 모드 지침 — 위의 출력 형식·분량 지시보다 우선]\n지금은 디렉터와 실시간 채팅 중이다. 답변은 바로 시작한다 — 첫 문장부터 먼저 낸다.\n- 대화 흐름에 맞는 자연스러운 길이로 답한다. 간단한 질문엔 간결하게, 로드맵 점검이나 기획 요청엔 깊이 있게.\n- 커밍쏜의 코칭 방식을 따른다: 1) 잘한 점을 인정하되 핵심 문제를 정면으로 짚는다 2) 왜?를 파고든다 — 결핍이 모호하면 메시지도 타겟도 흔들린다 3) 소재는 대중성으로, 차별화는 메시지·페르소나·라이프스타일로 만든다 4) 수익 불안 때문에 방향을 바꾸려는 패턴을 경계시킨다 5) 마지막엔 실행 가능한 다음 스텝을 제시한다.\n- 판단에 필요한 정보가 부족하면 먼저 되묻는다. 근거 없는 확신 대신 참고 자료와 과거 사례에 기반해 말한다.\n- 아이디어 제안 요청에는 구체적 예시(제목·훅·콘텐츠 구조)까지 낸다.\n- 참고 자료에 관련 사례가 있으면 자연스럽게 인용한다.';
-      userPrompt = (extraContext ? '[맥락 정보]\n' + extraContext + '\n\n' : '') + '[참고 자료]\n' + contextStr + casesBlock + '\n\n---\n\n디렉터의 메시지: ' + question;
+      userPrompt = (extraContext ? '[맥락 정보]\n' + extraContext + '\n\n' : '') + '[참고 자료]\n' + contextStr + casesBlock + channelsBlock + '\n\n---\n\n디렉터의 메시지: ' + question;
     }
 
     if (req.body && req.body.stream) {
@@ -615,7 +686,7 @@ ${isPublic
       const upstream = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: claudeHeaders(CLAUDE_KEY),
-        body: claudeBody(systemBlocks, userPrompt, { stream: true, maxTokens: 12000, effort: 'medium' }),
+        body: claudeBody(systemBlocks, userPrompt, { stream: true, maxTokens: 12000, effort: 'medium', tools: claudeTools }),
       });
       if (!upstream.ok || !upstream.body) {
         const errText = await upstream.text().catch(() => '');
@@ -632,6 +703,9 @@ ${isPublic
       const decoder = new TextDecoder();
       let sseBuf = '';
       let answerChars = 0, firstToken = false, streamErr = '';
+      // 웹 검색이 끼면 텍스트 블록이 여러 개로 나뉜다(검색 전 문장 → 검색 → 이어지는 문장).
+      // 블록 사이에 줄바꿈을 넣어 문단이 붙지 않게 한다.
+      let textBlocks = 0, searches = 0;
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -644,7 +718,15 @@ ${isPublic
           if (!payload) continue;
           try {
             const ev = JSON.parse(payload);
-            if (ev.type === 'content_block_delta' && ev.delta && ev.delta.text) {
+            if (ev.type === 'content_block_start' && ev.content_block) {
+              if (ev.content_block.type === 'text') {
+                if (textBlocks > 0) res.write('event: delta\ndata: ' + JSON.stringify({ t: '\n\n' }) + '\n\n');
+                textBlocks++;
+              } else if (ev.content_block.type === 'server_tool_use') {
+                searches++;
+                res.write('event: status\ndata: ' + JSON.stringify({ t: '🔎 웹에서 채널 정보를 찾는 중…' }) + '\n\n');
+              }
+            } else if (ev.type === 'content_block_delta' && ev.delta && ev.delta.text) {
               if (!firstToken) { firstToken = true; mark('firstToken'); }
               answerChars += ev.delta.text.length;
               res.write('event: delta\ndata: ' + JSON.stringify({ t: ev.delta.text }) + '\n\n');
@@ -665,6 +747,7 @@ ${isPublic
         }
       }
       res.write('event: done\ndata: {}\n\n');
+      if (searches) M.sources.webSearches = searches;
       logMetrics({ ok: !streamErr, error: streamErr, answerChars });
       return res.end();
     }
@@ -673,12 +756,14 @@ ${isPublic
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: claudeHeaders(CLAUDE_KEY),
-      body: claudeBody(systemBlocks, userPrompt, { maxTokens: 8000, effort: 'medium' }),
+      body: claudeBody(systemBlocks, userPrompt, { maxTokens: 8000, effort: 'medium', tools: claudeTools }),
     });
     const data = await response.json();
     if (data.error) throw new Error('Claude: ' + data.error.message);
     const text = pickText(data);
     const u = data.usage || {};
+    const webSearches = (data.content || []).filter((b) => b && b.type === 'server_tool_use').length;
+    if (webSearches) M.sources.webSearches = webSearches;
     M.model = data.model || '';
     M.usage = { input: u.input_tokens || 0, output: u.output_tokens || 0,
                 cacheRead: u.cache_read_input_tokens || 0, cacheWrite: u.cache_creation_input_tokens || 0 };

@@ -162,6 +162,10 @@ await t('chunks 쓰기 차단',
   () => assertFails(setDoc(doc(owner, 'chunks', 'k1'), { text: 'x' })));
 await t('evals(자동 평가) 읽기 차단',
   () => assertFails(getDoc(doc(owner, 'evals', 'e1'))));
+await t('channels(채널 리서치 캐시) 읽기·쓰기 차단',
+  () => assertFails(getDoc(doc(owner, 'channels', 'c1'))));
+await t('channels 쓰기 차단',
+  () => assertFails(setDoc(doc(owner, 'channels', 'c1'), { title: 'x' })));
 
 console.log('\n── 입력 검증 ──');
 await t('닉네임 20자 초과 차단',

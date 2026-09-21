@@ -544,6 +544,12 @@ function gateFatal(detail) {
             })),
             playbook: Number(turn.evidence.playbook) || 0,
             studentMemory: !!turn.evidence.studentMemory,
+            // 롤모델 채널 리서치 요약 (📺 줄). 디렉터도 보는 값이라 함께 남긴다.
+            channels: (turn.evidence.channels || []).slice(0, 6).map((c) => ({
+              name: cut(c.name || '', 80), handle: cut(c.handle || '', 60), url: cut(c.url || '', 200),
+              subscribers: Number(c.subscribers) || 0, videoCount: Number(c.videoCount) || 0, perMonth: Number(c.perMonth) || 0,
+              resolved: !!c.resolved,
+            })),
           } : null,
           updatedAt: F.serverTimestamp(),
         }, { merge: true });
