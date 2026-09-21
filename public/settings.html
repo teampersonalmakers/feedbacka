@@ -208,7 +208,8 @@ body { background: var(--bg); color: var(--ink); font-family: var(--font); min-h
   <section id="tab-cases" hidden>
     <div class="intro">
       <h1>디렉팅 사례</h1>
-      <p>컨설팅·코칭에서 나온 커밍쏜의 판단 기준입니다. <b>승인(AI 반영)</b>된 카드만 질문과 의미가 가까운 것을 골라 AI가 참고합니다.</p>
+      <p>컨설팅·코칭에서 나온 커밍쏜의 판단 기준입니다. <b>승인(AI 반영)</b>된 카드만 질문과 의미가 가까운 것을 골라 AI가 참고합니다.<br>
+      <span class="meta">빠른 검수 팁: 녹취 하나를 골라 카드를 훑고 → 맞는 것 전체 선택 → 선택 승인. <b>근거 약함</b> 표시만 열어서 확인하면 됩니다.</span></p>
     </div>
     <div class="card" style="margin-bottom:16px">
       <div class="card-head"><span class="ord">🧪</span><h3>녹취 → 판단 카드 증류</h3>
@@ -226,8 +227,17 @@ body { background: var(--bg); color: var(--ink); font-family: var(--font); min-h
     <div class="toolbar">
       <div class="tabs" id="caseTabs"></div>
       <div class="grow"></div>
+      <select class="search" id="caseSrc" title="녹취별로 모아 검수" style="max-width:260px"><option value="">녹취 전체</option></select>
+      <select class="search" id="caseTag" title="태그" style="width:auto"><option value="">태그 전체</option></select>
       <input class="search" id="caseSearch" placeholder="요약·본문·수강생 검색" />
       <button class="btn btn-primary" id="newCase">＋ 사례 추가</button>
+    </div>
+    <div class="toolbar" id="bulkBar" style="background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:10px;padding:8px 12px">
+      <label class="sw"><input type="checkbox" id="selAll"> 화면의 카드 전체 선택</label>
+      <span class="meta" id="selCount">0장 선택</span>
+      <div class="grow"></div>
+      <button class="btn btn-ok" id="bulkApprove" disabled>✅ 선택 승인 (AI 반영)</button>
+      <button class="btn btn-ghost" id="bulkReject" disabled>반려</button>
     </div>
     <div class="list" id="caseList"><div class="empty"><div class="icon">📁</div>불러오는 중…</div></div>
   </section>
@@ -371,7 +381,10 @@ function renderPreview() {
 // ─── 디렉팅 사례 (판단 카드) ────────────────────────────────────────────────
 // 녹취에서 증류된 초안(draft)을 커밍쏜이 승인하면 aiApplied=true 가 되고 검색 자산이 된다.
 var TAGS = ['주제선정', '타겟', '메시지', '콘셉트', '썸네일제목', '대본', '영상퀄리티', '업로드주기', '쇼츠', '수익화', '상품', '광고협업', '멤버십', '채널운영', '멘탈', '기타'];
-var cases = [], caseFilter = '초안', caseKw = '';
+var cases = [], caseFilter = '초안', caseKw = '', caseSrc = '', caseTag = '';
+var selected = {};   // id → true (일괄 처리용)
+// 근거가 약한 카드: 커밍쏜 발화 인용이 없거나 처방·이유가 비어 있으면 검수 때 눈여겨본다.
+function weak(c) { return c.status === 'draft' && (!c.quote || !c.prescription || !c.reasoning); }
 function caseState(c) {
   if (c.status === 'draft') return '초안';
   if (c.status === 'rejected') return '반려';
@@ -384,6 +397,8 @@ function visibleCases() {
     if (caseFilter === '초안' && st !== '초안') return false;
     if (caseFilter === 'AI 반영' && st !== 'AI 반영') return false;
     if (caseFilter === '미반영' && st !== '미반영' && st !== '반려') return false;
+    if (caseSrc && (c.sourceDoc || '') !== caseSrc) return false;
+    if (caseTag && (c.tags || []).indexOf(caseTag) < 0) return false;
     if (!kw) return true;
     return ((c.summary || '') + ' ' + (c.body || '') + ' ' + (c.situation || '') + ' ' + (c.prescription || '') + ' ' + (c.participants || '') + ' ' + (c.director || '') + ' ' + (c.tags || []).join(' ')).toLowerCase().indexOf(kw) >= 0;
   });
@@ -412,30 +427,39 @@ function renderCases() {
     b.innerHTML = esc(t[0]) + '<span class="n">' + t[1] + '</span>';
     b.onclick = function() { caseFilter = t[0]; renderCases(); }; tabs.appendChild(b);
   });
+  // 출처(녹취)·태그 필터 옵션 — 녹취 하나를 통째로 검수하면 맥락이 이어져 빠르다.
+  var srcSel = $('caseSrc'), tagSel = $('caseTag');
+  if (srcSel.options.length <= 1) {
+    var srcs = {}; cases.forEach(function(c) { if (c.sourceDoc) srcs[c.sourceDoc] = (srcs[c.sourceDoc] || 0) + 1; });
+    Object.keys(srcs).sort().forEach(function(k) { var o = document.createElement('option'); o.value = k; o.textContent = k.slice(0, 40) + ' (' + srcs[k] + ')'; srcSel.appendChild(o); });
+    TAGS.forEach(function(t) { var o = document.createElement('option'); o.value = t; o.textContent = t; tagSel.appendChild(o); });
+  }
   var el = $('caseList'); el.innerHTML = '';
   var head = document.createElement('div'); head.className = 'crow head';
-  head.innerHTML = '<div>AI 반영</div><div>판단 카드</div><div class="hide-sm">기수</div><div class="hide-sm">출처</div><div>열기</div>';
+  head.innerHTML = '<div>선택</div><div>판단 카드</div><div class="hide-sm">기수</div><div class="hide-sm">출처</div><div>열기</div>';
   el.appendChild(head);
   var list = visibleCases();
+  var selN = list.filter(function(c) { return selected[c.id]; }).length;
+  $('selCount').textContent = selN + '장 선택' + (list.length ? ' / 화면 ' + list.length + '장' : '');
+  $('bulkApprove').disabled = $('bulkReject').disabled = !selN;
+  $('selAll').checked = !!list.length && selN === list.length;
   if (!list.length) { el.innerHTML += '<div class="empty"><div class="icon">📁</div>' + (cases.length ? (caseFilter === '초안' ? '검수 대기 중인 초안이 없습니다. 아래 증류를 실행하면 생깁니다.' : '조건에 맞는 사례가 없습니다.') : '아직 사례가 없습니다.') + '</div>'; return; }
   list.forEach(function(c) {
     var d = document.createElement('div'); d.className = 'crow';
     var tags = (c.tags || []).map(function(t) { return '<span class="pill" style="background:var(--accent-soft);color:var(--accent);font-size:10px;padding:2px 6px;margin-right:4px">' + esc(t) + '</span>'; }).join('');
     d.innerHTML =
-      '<label class="sw" title="켜면 AI가 이 사례를 참고합니다"><input type="checkbox" ' + (c.aiApplied ? 'checked' : '') + '></label>' +
-      '<div class="s">' + (c.status === 'draft' ? '<span class="pill" style="background:var(--warn-soft);color:var(--warn);font-size:10px;padding:2px 6px;margin-right:6px">초안</span>' : '') + esc(c.summary || '(요약 없음)') +
+      '<label class="sw" title="일괄 승인·반려용 선택"><input type="checkbox" ' + (selected[c.id] ? 'checked' : '') + '></label>' +
+      '<div class="s">' + (c.status === 'draft' ? '<span class="pill" style="background:var(--warn-soft);color:var(--warn);font-size:10px;padding:2px 6px;margin-right:6px">초안</span>' : '') +
+        (c.aiApplied ? '<span class="pill" style="background:var(--ok-soft);color:var(--ok);font-size:10px;padding:2px 6px;margin-right:6px">AI 반영</span>' : '') +
+        (weak(c) ? '<span class="pill" style="background:var(--danger-soft);color:var(--danger);font-size:10px;padding:2px 6px;margin-right:6px" title="커밍쏜 발화 인용이 없거나 처방·이유가 비었습니다. 열어서 확인하세요">근거 약함</span>' : '') +
+        esc(c.summary || '(요약 없음)') +
         '<small>' + tags + esc([c.round, c.participants].filter(Boolean).join(' · ')) + '</small></div>' +
       '<div class="cell hide-sm">' + esc(c.cohort || '') + '</div>' +
       '<div class="cell hide-sm" title="' + esc(c.sourceDoc || '') + '">' + esc(c.source === 'distill' ? '녹취 증류' : (c.source === 'app' ? '직접 입력' : '노션')) + '</div>' +
       '<div class="cell"><button class="btn btn-ghost" style="padding:5px 10px">열기</button></div>';
     var cb = d.querySelector('input');
     cb.onclick = function(e) { e.stopPropagation(); };
-    cb.onchange = async function() {
-      cb.disabled = true;
-      try { await setCaseApplied(c, cb.checked); renderCases(); }
-      catch (e2) { cb.checked = !cb.checked; alert('저장 실패: ' + e2.message); }
-      cb.disabled = false;
-    };
+    cb.onchange = function() { if (cb.checked) selected[c.id] = true; else delete selected[c.id]; renderCases(); };
     d.querySelector('label').onclick = function(e) { e.stopPropagation(); };
     d.onclick = function() { openCase(c); };
     el.appendChild(d);
@@ -513,6 +537,32 @@ function openCase(row) {
 }
 $('newCase').onclick = function() { openCase(null); };
 $('caseSearch').addEventListener('input', function(e) { caseKw = e.target.value; renderCases(); });
+$('caseSrc').addEventListener('change', function(e) { caseSrc = e.target.value; renderCases(); });
+$('caseTag').addEventListener('change', function(e) { caseTag = e.target.value; renderCases(); });
+$('selAll').addEventListener('change', function(e) {
+  var list = visibleCases(); list.forEach(function(c) { if (e.target.checked) selected[c.id] = true; else delete selected[c.id]; }); renderCases();
+});
+async function bulk(approve) {
+  var ids = Object.keys(selected); if (!ids.length) return;
+  if (!confirm(ids.length + '장을 ' + (approve ? '승인(AI 반영)' : '반려') + '할까요?')) return;
+  $('bulkApprove').disabled = $('bulkReject').disabled = true;
+  var ok = 0, fail = 0;
+  for (var i = 0; i < ids.length; i++) {
+    var c = cases.find(function(x) { return x.id === ids[i]; }); if (!c) continue;
+    try {
+      await window.PMFire.saveCase(c.id, Object.assign({}, c, { aiApplied: approve, status: approve ? 'approved' : 'rejected', confirmed: true }));
+      c.aiApplied = approve; c.status = approve ? 'approved' : 'rejected';
+      try { await embedApi({ kind: 'case', id: c.id, action: approve ? 'upsert' : 'delete' }); } catch (e2) {}
+      ok++;
+    } catch (e) { fail++; }
+    delete selected[ids[i]];
+    $('selCount').textContent = '처리 중… ' + (i + 1) + '/' + ids.length;
+  }
+  renderCases();
+  if (fail) alert(ok + '장 처리, ' + fail + '장 실패');
+}
+$('bulkApprove').onclick = function() { bulk(true); };
+$('bulkReject').onclick = function() { bulk(false); };
 
 // ─── 녹취 → 판단 카드 증류 ──────────────────────────────────────────────────
 async function distillApi(method, body) {

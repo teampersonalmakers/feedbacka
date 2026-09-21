@@ -414,8 +414,9 @@ async function send() {
   if (student) extra += '수강생 이름: ' + student + '\n';
   if (turns.length) {
     extra += '\n[이전 대화 — 맥락 참고용]\n';
-    turns.slice(-3).forEach(function(x) {
-      extra += 'Q: ' + x.q.slice(0, 500) + '\nA: ' + (x.a || '').slice(0, 900) + '\n---\n';
+    // 확정까지 가는 대화는 길어진다 — 최근 6턴, 답변은 앞쪽 1,400자(핵심 판단이 앞에 온다).
+    turns.slice(-6).forEach(function(x) {
+      extra += 'Q: ' + x.q.slice(0, 700) + '\nA: ' + (x.a || '').slice(0, 1400) + '\n---\n';
     });
   }
 
@@ -428,7 +429,9 @@ async function send() {
   scrollBottom();
   t.value = ''; autoGrow(); clearAtt();
 
-  var body = { question: question, chat: true, searchQuery: (text || question).slice(0, 800), studentName: student, cohort: student ? cohortVal() : '', extraContext: extra, mode: mode, stream: true };
+  // 이어지는 질문("그럼 썸네일은요?")은 그 자체로 검색이 안 된다 — 직전 질문을 검색어에 붙인다.
+  var prevQ = turns.length > 1 ? (turns[turns.length - 2].q || '').slice(0, 300) : '';
+  var body = { question: question, chat: true, searchQuery: ((prevQ ? prevQ + ' ' : '') + (text || question)).slice(0, 1000), studentName: student, cohort: student ? cohortVal() : '', extraContext: extra, mode: mode, stream: true };
   if (turns.length > 1) body.contextQ = '1';
 
   try {

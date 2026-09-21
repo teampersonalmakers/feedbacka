@@ -4,7 +4,7 @@
       "maxDuration": 30
     },
     "api/feedback.js": {
-      "maxDuration": 60,
+      "maxDuration": 120,
       "includeFiles": "knowledge/base*.json"
     },
     "api/ocr.js": {

@@ -511,10 +511,13 @@ ${outputList.includes('썸네일 아이디어') ? `## 🖼 썸네일 아이디�
   // 디렉팅 사례 아카이브(컨설팅 내용) — Notion 에서 'AI반영' 체크된 것만.
   // 기존 코드에는 이 경로가 아예 없어서, 컴펌된 사례가 AI 에 닿지 않고 있었다.
   // 판단 카드: 벡터 검색이 되면 그 결과(의미 기준), 아니면 예전 단어 겹침 방식.
-  const relevantCases = vectorCases !== null
-    ? vectorCases
-    : pickCases((await fsLoadCases()) || [], question, 3);
+  // 벡터 결과가 비면(아직 승인 카드가 임베딩되지 않았거나 유사도 미달) 예전 단어 겹침으로.
+  let relevantCases = vectorCases !== null ? vectorCases : [];
   M.sources.casesBackend = vectorCases !== null ? 'vector' : 'keyword';
+  if (!relevantCases.length) {
+    relevantCases = pickCases((await fsLoadCases()) || [], question, 3);
+    if (relevantCases.length) M.sources.casesBackend = 'keyword';
+  }
   mark('firestore');
   M.sources.cases = relevantCases.length;
   M.sources.playbook = playbook.length;

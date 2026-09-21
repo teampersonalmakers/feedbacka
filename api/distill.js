@@ -19,6 +19,7 @@ import { createHash } from 'crypto';
 import { requireOwner } from './_auth.js';
 import { getDb, COL, firestoreEnabled } from './_firestore.js';
 import { claudeHeaders, claudeBody, pickText } from './_claude.js';
+import { upsertCaseChunk, upsertPlaybookChunk } from './_vectors.js';
 
 export const config = { maxDuration: 300 };
 
@@ -62,9 +63,33 @@ const SYSTEM = `당신은 퍼스널메이커스 팀의 컨설팅 녹취를 "판�
 2. 잡담·인사·대시보드 설명 같은 부분은 카드로 만들지 않습니다.
 3. 한 녹취에서 보통 3~8장. 판단이 하나뿐이면 1장, 없으면 빈 배열.
 4. 수강생의 말과 커밍쏜의 말을 섞지 마세요. 진단·처방·이유는 커밍쏜의 것만.
-5. 출력은 JSON 배열 하나만. 설명·머리말 없이.
+5. 출력은 JSON 배열 하나만. 설명·머리말 없이. 문자열 안의 줄바꿈은 \\n 으로 쓰고, 따옴표는 \\" 로 이스케이프합니다.
 
 [{"summary":"","situation":"","diagnosis":"","prescription":"","reasoning":"","quote":"","tags":[],"participants":""}]`;
+
+// 모델이 낸 JSON 은 문자열 안에 생 줄바꿈·탭이 섞이거나 끝에 쉼표가 남을 때가 있다.
+// (140편 중 3편이 이걸로 실패했다) 그대로 파싱 → 실패하면 고쳐서 다시.
+export function parseCards(raw) {
+  try { return JSON.parse(raw); } catch {}
+  let fixed = '';
+  let inStr = false, esc = false;
+  for (const ch of raw) {
+    if (inStr) {
+      if (esc) { fixed += ch; esc = false; continue; }
+      if (ch === '\\') { fixed += ch; esc = true; continue; }
+      if (ch === '"') { inStr = false; fixed += ch; continue; }
+      if (ch === '\n') { fixed += '\\n'; continue; }
+      if (ch === '\r') continue;
+      if (ch === '\t') { fixed += '\\t'; continue; }
+      if (ch.charCodeAt(0) < 32) continue;
+      fixed += ch; continue;
+    }
+    if (ch === '"') inStr = true;
+    fixed += ch;
+  }
+  fixed = fixed.replace(/,\s*([}\]])/g, '$1');
+  return JSON.parse(fixed);
+}
 
 export function meta(name) {
   const cohort = (name.match(/(\d)기/) || [])[1];
@@ -83,7 +108,7 @@ export async function distillOne(doc, key) {
   const text = pickText(d);
   const m = text.match(/\[[\s\S]*\]/);
   if (!m) throw new Error('JSON 배열을 찾지 못함: ' + text.slice(0, 120));
-  const cards = JSON.parse(m[0]);
+  const cards = parseCards(m[0]);
   if (!Array.isArray(cards)) throw new Error('배열이 아님');
   return { cards, model: d.model || DISTILL_MODEL, usage: d.usage || {} };
 }
@@ -106,7 +131,19 @@ export default async function handler(req, res) {
 
   if (req.method === 'GET') {
     const drafts = (await db.collection(COL.cases).where('status', '==', 'draft').count().get()).data().count;
-    return res.status(200).json({ total: targets.length, done: done.length, failed: failed.length, drafts,
+    // 설정 화면을 열 때마다 아직 검색 자산으로 안 올라간 승인 사례·승인 Q&A 를 조금씩 올린다.
+    // (노션에서 옮겨온 34건처럼 버튼을 누르지 않아도 두어 번 열면 다 올라간다)
+    let backfill = { cases: 0, playbook: 0 };
+    const GK = process.env.GEMINI_API_KEY;
+    if (GK) {
+      try {
+        const cs = await db.collection(COL.cases).where('aiApplied', '==', true).limit(200).get();
+        for (const d of cs.docs.filter((x) => !x.data().embeddedAt).slice(0, 20)) { backfill.cases += await upsertCaseChunk(d.id, GK); }
+        const pb = await db.collection(COL.playbook).where('status', '==', '승인').limit(100).get();
+        for (const d of pb.docs.filter((x) => !x.data().embeddedAt).slice(0, 10)) { backfill.playbook += await upsertPlaybookChunk(d.id, GK); }
+      } catch (e) { console.warn('[distill] 백필 실패(무시):', e.message); }
+    }
+    return res.status(200).json({ total: targets.length, done: done.length, failed: failed.length, drafts, backfill,
       totalChars: targets.reduce((a, t) => a + t.chars, 0), model: DISTILL_MODEL });
   }
   if (req.method !== 'POST') return res.status(405).json({ error: 'GET/POST only' });
