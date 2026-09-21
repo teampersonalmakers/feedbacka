@@ -11,12 +11,8 @@ import {
 } from './_firestore.js';
 import { claudeHeaders, claudeBody, cachedBlock, pickText, webSearchTool } from './_claude.js';
 import { embedQuery, searchChunks, searchChunksByOrigin, countChunks } from './_vectors.js';
-import { hasChannelSignal, extractChannelMentions, researchChannels, formatChannelBlock, summarizeChannels } from './_channels.js';
+import { hasChannelSignal, extractChannelMentions, researchChannels, formatChannelBlock, summarizeChannels, youtubeAuth, probeYouTube } from './_channels.js';
 import { todayKST } from './_firestore.js';
-
-// 롤모델 채널 조회용 YouTube Data API 키. 전용 키가 없으면 Gemini 키로 시도한다 —
-// 같은 GCP 프로젝트에서 YouTube Data API v3 를 켜 두었으면 그 키로도 된다.
-const youtubeKey = () => (process.env.YOUTUBE_API_KEY || process.env.GEMINI_API_KEY || '').trim();
 
 // 채널이 자동 조회되지 않았을 때 Claude 웹 검색을 붙일지. WEB_SEARCH=off 로 끌 수 있다.
 const webSearchOn = () => String(process.env.WEB_SEARCH || 'on').toLowerCase() !== 'off';
@@ -260,19 +256,6 @@ async function loadPlaybookFromNotion(notionKey) {
   }
 }
 
-// 롤모델 채널 조회가 실제로 되는지 — 상태 확인(GET)에서만 부른다. channels.list 1유닛.
-async function probeYouTube() {
-  const key = youtubeKey();
-  if (!key) return { youtube: 'no-key', webSearch: webSearchOn() };
-  try {
-    const r = await fetch('https://www.googleapis.com/youtube/v3/channels?part=id&forHandle=%40youtube&key=' + encodeURIComponent(key), { signal: AbortSignal.timeout(6000) });
-    const d = await r.json().catch(() => ({}));
-    if (r.ok && !d.error) return { youtube: 'ok', keyFrom: process.env.YOUTUBE_API_KEY ? 'YOUTUBE_API_KEY' : 'GEMINI_API_KEY', webSearch: webSearchOn() };
-    const e = (d.error && d.error.errors && d.error.errors[0]) || {};
-    return { youtube: 'error', reason: e.reason || String(r.status), message: String((d.error && d.error.message) || '').slice(0, 120), keyFrom: process.env.YOUTUBE_API_KEY ? 'YOUTUBE_API_KEY' : 'GEMINI_API_KEY', webSearch: webSearchOn() };
-  } catch (e) { return { youtube: 'error', reason: e.message.slice(0, 80), webSearch: webSearchOn() }; }
-}
-
 // 로컬 파일 폴백
 function loadGuidelinesFromFile() {
   try {
@@ -364,7 +347,7 @@ export default async function handler(req, res) {
         NOTION_API_KEY: !!process.env.NOTION_API_KEY,
         YOUTUBE_API_KEY: !!process.env.YOUTUBE_API_KEY,
       },
-      channelResearch: await probeYouTube(),
+      channelResearch: Object.assign(await probeYouTube(), { webSearch: webSearchOn() }),
       firestore: {
         enabled: fsOn,
         guidelines: g ? Object.keys(g.categoryGuidelines || {}).length + 6 : 0,
@@ -433,7 +416,7 @@ export default async function handler(req, res) {
           const mentions = await extractChannelMentions(mentionText, CLAUDE_KEY);
           mark('channelExtract');
           if (!mentions.length) return;
-          const r = await researchChannels(mentions, youtubeKey());
+          const r = await researchChannels(mentions, await youtubeAuth());
           mark('channelFetch');
           channelResearch = Object.assign(r, { mentions: mentions.length });
         } catch (e) { console.warn('채널 리서치 실패(무시):', e.message.slice(0, 120)); }

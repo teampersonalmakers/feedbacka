@@ -18,7 +18,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import crypto from 'crypto';
-import { getDb } from './_firestore.js';
+import { GoogleAuth } from 'google-auth-library';
+import { getDb, readServiceAccount } from './_firestore.js';
 import { claudeHeaders, claudeBody, pickText } from './_claude.js';
 
 const YT = 'https://www.googleapis.com/youtube/v3';
@@ -104,16 +105,45 @@ async function extractNamesWithModel(text, claudeKey) {
     }));
 }
 
+// ─── 인증 ─────────────────────────────────────────────────────────────────────
+// 두 경로 중 되는 것을 쓴다.
+//   1) YOUTUBE_API_KEY 환경변수 (전용 API 키)
+//   2) Firestore 에 쓰는 서비스 계정의 OAuth 토큰 — 공개 데이터 읽기는 이걸로 충분하다.
+//      키를 따로 만들 필요 없이 GCP 프로젝트에서 YouTube Data API v3 만 켜면 된다.
+// 돌려주는 값: { key } | { bearer } | null
+let _tok = null;   // { bearer, exp }
+export async function youtubeAuth() {
+  const key = (process.env.YOUTUBE_API_KEY || '').trim();
+  if (key) return { key };
+  if (_tok && Date.now() < _tok.exp) return { bearer: _tok.bearer };
+  const sa = readServiceAccount();
+  if (!sa) return null;
+  try {
+    const auth = new GoogleAuth({ credentials: sa, projectId: sa.project_id, scopes: ['https://www.googleapis.com/auth/youtube.readonly'] });
+    const client = await auth.getClient();
+    const { token } = await client.getAccessToken();
+    if (!token) return null;
+    _tok = { bearer: token, exp: Date.now() + 50 * 60 * 1000 };
+    return { bearer: token };
+  } catch (e) {
+    console.warn('[channels] 서비스 계정 토큰 실패:', e.message.slice(0, 120));
+    return null;
+  }
+}
+export const YT_ENABLE_URL = 'https://console.cloud.google.com/apis/library/youtube.googleapis.com';
+
 // ─── 3) YouTube Data API 조회 ─────────────────────────────────────────────────
 class YtError extends Error {
   constructor(status, reason, message) { super(message); this.status = status; this.reason = reason; }
 }
 
-async function yt(path, params, key) {
+async function yt(path, params, auth) {
   const u = new URL(YT + path);
   for (const [k, v] of Object.entries(params)) if (v != null && v !== '') u.searchParams.set(k, String(v));
-  u.searchParams.set('key', key);
-  const r = await fetch(u, { signal: AbortSignal.timeout(8000) });
+  const headers = {};
+  if (auth && auth.key) u.searchParams.set('key', auth.key);
+  else if (auth && auth.bearer) headers.Authorization = 'Bearer ' + auth.bearer;
+  const r = await fetch(u, { headers, signal: AbortSignal.timeout(8000) });
   const data = await r.json().catch(() => ({}));
   if (!r.ok || data.error) {
     const err = (data.error && data.error.errors && data.error.errors[0]) || {};
@@ -243,9 +273,27 @@ function cachePut(key, v) {
   db.collection('channels').doc(key).set(v).catch((e) => console.warn('[channels] 캐시 저장 실패:', e.message.slice(0, 80)));
 }
 
+// 상태 확인용 — 어느 인증으로 실제 조회가 되는지. channels.list 1유닛.
+export async function probeYouTube() {
+  const auth = await youtubeAuth();
+  const via = auth ? (auth.key ? 'YOUTUBE_API_KEY' : 'service-account') : 'none';
+  if (!auth) return { youtube: 'no-auth', via };
+  try {
+    await yt('/channels', { part: 'id', forHandle: '@youtube' }, auth);
+    return { youtube: 'ok', via };
+  } catch (e) {
+    const sa = readServiceAccount();
+    const out = { youtube: 'error', via, reason: e.reason || String(e.status || ''), message: String(e.message || '').slice(0, 160) };
+    if (e.reason === 'accessNotConfigured' || /has not been used|is disabled/i.test(e.message)) {
+      out.fix = 'GCP 프로젝트에서 YouTube Data API v3 를 사용 설정하세요: ' + YT_ENABLE_URL + (sa ? '?project=' + sa.project_id : '');
+    }
+    return out;
+  }
+}
+
 // ─── 공개 API ─────────────────────────────────────────────────────────────────
 // mentions → { profiles: [...], unresolved: [{name,hint}], backend: 'youtube'|'none', keyFailed: bool }
-export async function researchChannels(mentions, ytKey) {
+export async function researchChannels(mentions, auth) {
   const profiles = [], unresolved = [];
   let keyFailed = false;
   if (!mentions.length) return { profiles, unresolved, backend: 'none', keyFailed };
@@ -254,9 +302,9 @@ export async function researchChannels(mentions, ytKey) {
     const key = cacheKey(m);
     const hit = await cacheGet(key);
     if (hit) { profiles.push(Object.assign({}, hit, { query: m.name, hint: m.hint || hit.hint || '', cached: true })); return; }
-    if (!ytKey || keyFailed) { unresolved.push({ name: m.name, hint: m.hint || '' }); return; }
+    if (!auth || keyFailed) { unresolved.push({ name: m.name, hint: m.hint || '' }); return; }
     try {
-      const p = await fetchProfile(m, ytKey);
+      const p = await fetchProfile(m, auth);
       if (!p) { unresolved.push({ name: m.name, hint: m.hint || '' }); return; }
       cachePut(key, p);
       profiles.push(p);
