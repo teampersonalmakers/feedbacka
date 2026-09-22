@@ -145,6 +145,7 @@ export async function loadGuidelines() {
         case 'freeGuide': g.freeGuidelines = body.join('\n'); break;
         case 'doNotDo':   g.doNotDo = body; break;
         case 'voice':     g.voiceSamples = body; break;   // 커밍쏜 실제 발화 샘플 (유튜브 자막 원문, 말투 근거)
+        case 'logic':     g.logicChecks = body; break;    // 컨설팅 논리 체크 — 판단 전에 진단하는 순서·질문 (설정에서 편집)
         case 'category':
           if (!g.categoryGuidelines) g.categoryGuidelines = {};
           g.categoryGuidelines[r.category] = { name: r.name || r.category, rules: body };
