@@ -15,7 +15,7 @@
       "includeFiles": "knowledge/base*.json"
     },
     "api/backfill.js": {
-      "maxDuration": 120
+      "maxDuration": 300
     }
   }
 }

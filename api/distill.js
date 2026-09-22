@@ -391,21 +391,23 @@ async function patternsStep(db, KEY, { force = false, maxBatches = 2 } = {}) {
 
 // 실패한 병합 자동 재시도 — 배치는 다 끝났는데 병합만 error 로 남은 상태를, 공개 백필 호출(/api/backfill)에서
 // 1시간에 최대 1번 다시 시도한다. 배치를 다시 돌리지 않으니 비용은 Sonnet 호출 1번. 오너 로그인이 없어도 스스로 낫는다.
-const MERGE_RETRY_GAP_MS = 60 * 60 * 1000;
+const MERGE_RETRY_GAP_MS = 30 * 60 * 1000;
 export async function patternsMergeRetry(db, KEY) {
   if (!db || !KEY) return { skipped: true, reason: 'no-db-or-key' };
   const ref = db.collection(COL.distill).doc(PATTERN_DOC);
   const st = (await ref.get()).data();
-  if (!st) return { skipped: true, reason: 'no-run' };
-  // 배치가 남은 채 멈춘 실행(크레딧 소진 등)은 10분에 최대 2배치씩 이어 돈다 — 오너가 다시 안 열어도 결국 끝난다.
-  const pending = st.status === 'running' && Object.keys(st.results || {}).length < (st.total || 0);
-  if (pending) {
+  if (!st || st.status === 'done') return { skipped: true, reason: st ? 'done' : 'no-run' };
+  const finished = Object.keys(st.results || {}).length;
+  // 배치가 남은 채 멈춘 실행(크레딧 소진 등)은 10분에 최대 4배치씩 이어 돈다 — 오너가 다시 안 열어도 결국 끝난다.
+  if (st.status === 'running' && finished < (st.total || 0)) {
     if (Date.now() - (st.at || 0) < BACKFILL_RESUME_GAP_MS) return { skipped: true, reason: 'recent-batch' };
     await ref.set({ at: Date.now() }, { merge: true });
-    return patternsStep(db, KEY, { maxBatches: 2 });
+    return patternsStep(db, KEY, { maxBatches: 4 });
   }
-  if (st.status !== 'error' || !(st.done >= st.total)) return { skipped: true, reason: 'not-mergeable' };
-  if (Date.now() - (st.at || 0) < MERGE_RETRY_GAP_MS) return { skipped: true, reason: 'recent', nextInSec: Math.ceil((MERGE_RETRY_GAP_MS - (Date.now() - (st.at || 0))) / 1000) };
+  // 배치는 다 끝났는데 병합이 안 된 상태: 중단(running)이면 10분 뒤, 실패(error)면 30분 뒤 병합만 재시도.
+  if (finished < (st.total || 0)) return { skipped: true, reason: 'not-mergeable' };
+  const gap = st.status === 'error' ? MERGE_RETRY_GAP_MS : BACKFILL_RESUME_GAP_MS;
+  if (Date.now() - (st.at || 0) < gap) return { skipped: true, reason: 'recent', nextInSec: Math.ceil((gap - (Date.now() - (st.at || 0))) / 1000) };
   await ref.set({ at: Date.now() }, { merge: true });   // 먼저 시각을 찍어 동시 호출을 막는다
   return patternsStep(db, KEY, { maxBatches: 0 });
 }
