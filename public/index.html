@@ -79,6 +79,18 @@ main { flex:1; overflow-y:auto; }
 .research a:hover { border-color:var(--accent); color:var(--accent); }
 .research span.ch.miss { color:var(--ink-soft); border-style:dashed; }
 .stat { font-size:12px; color:var(--ink-soft); margin-top:6px; }
+/* 레퍼런스 콘텐츠 썸네일 — 구독자 대비 조회수 높은 영상. 클릭하면 유튜브. */
+.refs { margin-top:12px; }
+.refs .rh { font-size:11.5px; font-weight:600; color:var(--ink-mid); margin-bottom:6px; }
+.refs .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:8px; }
+.refs a { display:block; text-decoration:none; color:var(--ink-mid); border:1px solid var(--border); border-radius:8px; overflow:hidden; background:var(--bg); }
+.refs a:hover { border-color:var(--accent); }
+.refs img { width:100%; aspect-ratio:16/9; object-fit:cover; display:block; background:#e5e7eb; }
+.refs .cap { padding:5px 7px; font-size:10.5px; line-height:1.35; }
+.refs .cap b { display:block; color:var(--ink); font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.refs .cap .num { position:absolute; }
+.refs .thumb { position:relative; }
+.refs .thumb span { position:absolute; left:5px; top:5px; background:rgba(0,0,0,.65); color:#fff; font-size:10px; padding:1px 6px; border-radius:4px; }
 .src { font-size:10.5px; background:var(--bg); border:1px solid var(--border); border-radius:5px; padding:3px 8px; color:var(--ink-soft); max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .acts { display:flex; gap:8px; margin-top:12px; padding-top:12px; border-top:1px solid var(--border); flex-wrap:wrap; }
 .evid { margin-top:10px; border:1px solid var(--border); border-radius:10px; background:var(--bg); padding:10px 12px; font-size:12px; color:var(--ink-mid); }
@@ -409,8 +421,27 @@ function addResearch(b, evidence) {
   });
   b.bubble.appendChild(d);
 }
+// 레퍼런스 콘텐츠 그리드 — 답변의 #번호와 같은 순서. 모든 계정에 보인다.
+function addReferences(b, evidence) {
+  var r = evidence && evidence.references; if (!r || !r.contents || !r.contents.length) return;
+  var d = document.createElement('div'); d.className = 'refs';
+  var h = document.createElement('div'); h.className = 'rh'; h.textContent = '📺 발견 확률 높은 콘텐츠 레퍼런스 · 주제: ' + (r.topic || '') + ' (구독자 대비 조회수 순)'; d.appendChild(h);
+  var g = document.createElement('div'); g.className = 'grid';
+  r.contents.forEach(function(c, i) {
+    var a = document.createElement('a'); a.href = c.url; a.target = '_blank'; a.rel = 'noopener';
+    var t = document.createElement('div'); t.className = 'thumb';
+    var img = document.createElement('img'); img.src = c.thumb; img.alt = c.title; img.loading = 'lazy'; t.appendChild(img);
+    var n = document.createElement('span'); n.textContent = '#' + (i + 1); t.appendChild(n);
+    var cap = document.createElement('div'); cap.className = 'cap';
+    var bb = document.createElement('b'); bb.textContent = c.title; bb.title = c.title; cap.appendChild(bb);
+    cap.appendChild(document.createTextNode(c.channelTitle + ' · 구독 ' + fmtKo(c.subscribers) + ' · 조회 ' + fmtKo(c.views) + ' (' + c.ratio + '배)'));
+    a.appendChild(t); a.appendChild(cap); g.appendChild(a);
+  });
+  d.appendChild(g); b.bubble.appendChild(d);
+}
 function addActions(b, q, a, sources, evidence) {
   addResearch(b, evidence);
+  addReferences(b, evidence);
   if (canSeeEvidence()) addSources(b, sources);
   var ad = document.createElement('div'); ad.className = 'acts';
   if (evidence && canSeeEvidence()) {

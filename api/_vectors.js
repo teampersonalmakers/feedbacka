@@ -181,6 +181,7 @@ export async function upsertPlaybookChunk(playbookId, key) {
       origin: 'playbook', playbookId, verified,
       docId: playbookId, docName: (verified === 'approved' ? '승인 답변: ' : '디렉터 검증 답변: ') + q.slice(0, 60),
       docType: 'playbook', category: p.category || '', cohort: p.cohort || '',
+      consultedAt: timing(p).consultedAt, when: timing(p).when,
       idx: i, text: t, chars: t.length, embedding: FieldValue.vector(vectors[i]), createdAt: Date.now(),
     });
   });
@@ -224,6 +225,31 @@ export async function deleteCaseChunks(caseId) {
   return snap.size;
 }
 
+// ─── 상담 시기 ────────────────────────────────────────────────────────────────
+// "겹치는데 조금 다른 판단"이면 최신 상담을 우선하기 위해 사례·Q&A 마다 시기를 붙인다.
+//   · consultDate / consultedAt 이 있으면 그대로
+//   · 없으면 기수로 어림한다(순서만 맞으면 된다 — 표시는 기수로, 날짜를 지어내지 않는다)
+const COHORT_TS = { '4기': Date.UTC(2025, 6, 1), '5기': Date.UTC(2026, 0, 1), '6기': Date.UTC(2026, 6, 1), '7기': Date.UTC(2026, 9, 1) };
+export function timing(c) {
+  const cohort = String(c.cohort || '').trim();
+  const round = String(c.round || '').trim();
+  let ts = 0, when = '';
+  if (c.consultedAt && Number(c.consultedAt) > 0) { ts = Number(c.consultedAt); when = new Date(ts).toISOString().slice(0, 7); }
+  else if (c.consultDate && /^\d{4}-\d{2}/.test(String(c.consultDate))) { ts = Date.parse(String(c.consultDate).slice(0, 10)) || 0; when = String(c.consultDate).slice(0, 7); }
+  if (!ts && COHORT_TS[cohort]) { ts = COHORT_TS[cohort]; when = ''; }
+  if (!ts && c.source === 'import' && c.createdAt) { ts = Number(c.createdAt); when = new Date(ts).toISOString().slice(0, 7); }
+  const label = [cohort, round].filter(Boolean).join(' ') + (when ? (cohort || round ? ' · ' : '') + when : '');
+  return { consultedAt: ts || 0, when: label };
+}
+// 최신일수록 가산점 — 최근 24개월 안에서 선형, 최대 +0.06 (유사도 0~1 기준).
+// 같은 질문에 대한 옛 판단과 새 판단이 비슷한 유사도로 잡히면 새 것이 위로 온다.
+export function recencyBoost(consultedAt, now = Date.now()) {
+  if (!consultedAt) return 0;
+  const span = 24 * 30 * 86400000;
+  const x = Math.max(0, Math.min(1, (consultedAt - (now - span)) / span));
+  return 0.06 * x;
+}
+
 export function caseText(c) {
   const parts = [];
   if (c.situation) parts.push('상황: ' + c.situation);
@@ -243,9 +269,11 @@ export async function upsertCaseChunk(caseId, key) {
   if (!c.aiApplied || !c.summary) return 0;
   const text = ('사례: ' + c.summary + '\n' + caseText(c)).slice(0, 6000);
   const vec = await embedDoc(text, key);
+  const tm = timing(c);
   await db.collection(COL.chunks).doc(`case_${caseId}`).set({
     origin: 'case', caseId, docId: caseId, docName: '디렉팅 사례: ' + String(c.summary).slice(0, 60), docType: 'case',
     summary: String(c.summary), cohort: c.cohort || '', tags: c.tags || [], idx: 0, text, chars: text.length,
+    consultedAt: tm.consultedAt, when: tm.when,
     embedding: FieldValue.vector(vec), createdAt: Date.now(),
   });
   await doc.ref.set({ embeddedAt: Date.now() }, { merge: true });

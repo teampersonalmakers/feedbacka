@@ -545,6 +545,15 @@ function gateFatal(detail) {
             playbook: Number(turn.evidence.playbook) || 0,
             studentMemory: !!turn.evidence.studentMemory,
             // 롤모델 채널 리서치 요약 (📺 줄). 디렉터도 보는 값이라 함께 남긴다.
+            // 레퍼런스 리서치 요약 (썸네일 그리드용). 이미지 자체는 저장하지 않는다 — URL 만.
+            references: turn.evidence.references ? {
+              topic: cut(turn.evidence.references.topic || '', 120), ok: !!turn.evidence.references.ok,
+              contents: (turn.evidence.references.contents || []).slice(0, 9).map((c) => ({
+                id: cut(c.id || '', 20), title: cut(c.title || '', 120), channelTitle: cut(c.channelTitle || '', 80), subscribers: Number(c.subscribers) || 0,
+                views: Number(c.views) || 0, ratio: Number(c.ratio) || 0, publishedAt: cut(c.publishedAt || '', 10), thumb: cut(c.thumb || '', 120), url: cut(c.url || '', 120),
+              })),
+              tiers: (turn.evidence.references.tiers || []).slice(0, 3).map((t) => ({ key: cut(t.key || '', 10), label: cut(t.label || '', 30), channels: (t.channels || []).slice(0, 3).map((c) => ({ title: cut(c.title || '', 80), handle: cut(c.handle || '', 60), subscribers: Number(c.subscribers) || 0, url: cut(c.url || '', 120) })) })),
+            } : null,
             channels: (turn.evidence.channels || []).slice(0, 6).map((c) => ({
               name: cut(c.name || '', 80), handle: cut(c.handle || '', 60), url: cut(c.url || '', 200),
               subscribers: Number(c.subscribers) || 0, videoCount: Number(c.videoCount) || 0, perMonth: Number(c.perMonth) || 0,

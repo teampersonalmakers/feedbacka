@@ -166,6 +166,8 @@ await t('channels(채널 리서치 캐시) 읽기·쓰기 차단',
   () => assertFails(getDoc(doc(owner, 'channels', 'c1'))));
 await t('channels 쓰기 차단',
   () => assertFails(setDoc(doc(owner, 'channels', 'c1'), { title: 'x' })));
+await t('references(레퍼런스 리서치 캐시) 읽기 차단',
+  () => assertFails(getDoc(doc(owner, 'references', 'r1'))));
 
 console.log('\n── 입력 검증 ──');
 await t('닉네임 20자 초과 차단',

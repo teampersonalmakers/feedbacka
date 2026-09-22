@@ -47,7 +47,7 @@ export function parseCaseDoc(md, fileName) {
 
   const meta = {};
   for (const l of lines.slice(0, 15)) {
-    const mm = /^- (고객 유형|컨설팅 단계|결과|태그|WHY 디깅 경로):\s*(.+)$/.exec(l);
+    const mm = /^- (고객 유형|컨설팅 단계|결과|태그|WHY 디깅 경로|상담일):\s*(.+)$/.exec(l);
     if (mm) meta[mm[1]] = mm[2].trim();
   }
   const docTags = (meta['태그'] || '').split(/\s+/).map((t) => t.replace(/^#/, '')).filter(Boolean);
@@ -201,6 +201,9 @@ async function importDoc(file, dry) {
       cohort: '', round: doc.round, director: '커밍쏜', kind: doc.isMethod ? 'method' : 'case',
       status: 'approved', aiApplied: true, confirmed: true,
       source: 'import', sourceDoc: doc.title, sourceKey: docKey,
+      // 상담 시기 — 문서에 '- 상담일: 2026-09-20' 이 있으면 그 날짜, 없으면 가져온 날(최신 상담으로 취급)
+      consultedAt: (doc.meta && doc.meta['상담일'] && Date.parse(String(doc.meta['상담일']).slice(0, 10))) || now,
+      consultDate: (doc.meta && doc.meta['상담일'] && String(doc.meta['상담일']).slice(0, 10)) || new Date(now).toISOString().slice(0, 10),
       createdAt: now, embeddedAt: 0,
     }, { merge: true });
   }

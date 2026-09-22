@@ -10,7 +10,8 @@ import {
   addMetrics,
 } from './_firestore.js';
 import { claudeHeaders, claudeBody, cachedBlock, pickText, webSearchTool } from './_claude.js';
-import { embedQuery, searchChunks, searchChunksByOrigin, countChunks } from './_vectors.js';
+import { embedQuery, searchChunks, searchChunksByOrigin, countChunks, recencyBoost, timing } from './_vectors.js';
+import { isReferenceRequest, referenceResearch, formatReferenceBlock, summarizeReferences, REFERENCE_GUIDE } from './_references.js';
 import { hasChannelSignal, extractChannelMentions, researchChannels, formatChannelBlock, summarizeChannels, youtubeAuth, probeYouTube } from './_channels.js';
 import { todayKST } from './_firestore.js';
 
@@ -424,6 +425,19 @@ export default async function handler(req, res) {
     }
   }
 
+  // ─── 레퍼런스 채널 리서치 ("이 사람한테 추천할 레퍼런스 채널 찾아줘") ───
+  // 참여자 주제로 YouTube 를 검색해 구독자 구간별 채널 9개 + 발견 확률 높은 콘텐츠(썸네일 포함)를 만든다.
+  let refResearch = null;
+  let refPromise = null;
+  if (category !== 'creator' && question && isReferenceRequest(String(question))) {
+    refPromise = (async () => {
+      try {
+        refResearch = await referenceResearch({ question: String(question), context: String(req.body.extraContext || ''), studentName: String(studentName || '').trim(), claudeKey: CLAUDE_KEY, auth: await youtubeAuth() });
+        mark('references');
+      } catch (e) { console.warn('레퍼런스 리서치 실패(무시):', e.message.slice(0, 120)); refResearch = { ok: false, topic: '', queries: [], tiers: [], contents: [], thumbs: [], errors: [String(e.message).slice(0, 120)] }; }
+    })();
+  }
+
   let hits = [];
   let vectorCases = null;   // 판단 카드(승인 사례) 벡터 검색 결과. null 이면 단어 겹침 폴백.
   if (GEMINI_KEY && question) {
@@ -438,8 +452,11 @@ export default async function handler(req, res) {
           searchChunks(queryVec, 6),
           searchChunksByOrigin('case', queryVec, 3).catch((e) => { console.warn('사례 벡터 검색 실패 → 단어 겹침 폴백:', e.message.slice(0, 80)); return null; }),
         ]);
-        hits = all;
-        if (cs) vectorCases = cs.filter((c) => c.score >= 0.45).map((c) => ({ summary: c.summary || c.docName, body: c.text, cohort: c.cohort || '', score: c.score }));
+        // 최신 상담 가산점 — 유사도가 비슷하면 최근 판단이 앞에 온다(문턱 0.45 는 원래 유사도로 본다).
+        hits = all.map((h) => Object.assign({}, h, { rank: (h.score || 0) + recencyBoost(h.consultedAt) })).sort((a, b) => b.rank - a.rank);
+        if (cs) vectorCases = cs.filter((c) => c.score >= 0.45)
+          .map((c) => ({ summary: c.summary || c.docName, body: c.text, cohort: c.cohort || '', when: c.when || '', consultedAt: c.consultedAt || 0, score: c.score, rank: c.score + recencyBoost(c.consultedAt) }))
+          .sort((a, b) => b.rank - a.rank);
         mark('retrieve');
         M.sources.ragBackend = 'firestore';
       } else {
@@ -465,6 +482,8 @@ export default async function handler(req, res) {
     M.sources.rag = hits.map((h) => h.docName).filter(Boolean);
   }
   if (channelPromise) await channelPromise;
+  if (refPromise) await refPromise;
+  if (refResearch) { M.sources.references = refResearch.ok ? refResearch.contents.length : 0; M.sources.referencesErrors = refResearch.errors.length; }
   M.sources.channels = channelResearch.profiles.length;
   M.sources.channelsUnresolved = channelResearch.unresolved.length;
   M.sources.channelsBackend = channelResearch.backend;
@@ -551,7 +570,7 @@ ${outputList.includes('썸네일 아이디어') ? `## 🖼 썸네일 아이디�
   let relevantCases = vectorCases !== null ? vectorCases : [];
   M.sources.casesBackend = vectorCases !== null ? 'vector' : 'keyword';
   if (!relevantCases.length) {
-    relevantCases = pickCases((await fsLoadCases()) || [], question, 3);
+    relevantCases = pickCases((await fsLoadCases()) || [], question, 3).map((c) => Object.assign({}, c, { when: timing(c).when }));
     if (relevantCases.length) M.sources.casesBackend = 'keyword';
   }
   mark('firestore');
@@ -566,7 +585,10 @@ ${outputList.includes('썸네일 아이디어') ? `## 🖼 썸네일 아이디�
     playbook: playbook.length,
     studentMemory: M.sources.studentMemory,
     channels: summarizeChannels(channelResearch.profiles, channelResearch.unresolved),
+    references: refResearch ? summarizeReferences(refResearch) : null,
   };
+  const referenceBlock = refResearch ? formatReferenceBlock(refResearch, todayKST()) : '';
+  const referencesBlock = referenceBlock ? '\n\n' + referenceBlock : '';
 
   // 롤모델 채널 블록 + 평가 지침. 데이터가 있을 때만 붙는다.
   const channelBlock = formatChannelBlock(channelResearch.profiles, channelResearch.unresolved, todayKST());
@@ -605,7 +627,7 @@ ${outputList.includes('썸네일 아이디어') ? `## 🖼 썸네일 아이디�
   const casesBlock = relevantCases.length > 0
     ? '\n\n[커밍쏜 디렉팅 사례 — 실제 컨설팅에서 나온 판단 기준]\n' +
       relevantCases.map((c, i) =>
-        `사례 ${i + 1}. ${c.summary}${c.cohort ? ` (${c.cohort})` : ''}\n${String(c.body).slice(0, 1500)}`
+        `사례 ${i + 1}. ${c.summary}${c.when ? ` (상담 시기: ${c.when})` : (c.cohort ? ` (${c.cohort})` : '')}\n${String(c.body).slice(0, 1500)}`
       ).join('\n\n')
     : '';
 
@@ -627,10 +649,12 @@ ${toneGuide}${feedbackOrder}${freeGuidelines}${doNotDo}${categoryRules}${playboo
 
   let VARIABLE_SYSTEM = `당신의 과거 콘텐츠, 강의, 컨설팅 자료를 참고하여 답변하세요.
 참고 자료 중 '커밍쏜 승인 답변'과 '디렉터 검증 답변'은 팀이 실제 상담에서 확인한 답이다. 비슷한 질문이면 자막보다 이 답의 판단과 기조를 우선 따른다. 다른 수강생의 사례라도 판단 기준은 그대로 적용한다.
+사례·답변에 '상담 시기'가 있다. 같은 상황에 대한 판단이 겹치는데 방향이 조금 다르면 더 최근 상담의 판단을 따른다 — 커밍쏜의 인사이트는 뒤로 갈수록 정교해진다. 오래된 판단은 최신 판단과 충돌하지 않는 범위에서만 보태고, 그 차이를 짚을 가치가 있으면 "예전엔 A 였는데 최근엔 B" 로 한 줄 언급한다.
 ${isPublic
   ? '지금 대화하는 상대는 멤버십 회원입니다. 1:1 코칭을 받는 것처럼 따뜻하지만 솔직하게 대화하세요.'
   : '디렉터가 수강생 미션을 검토하는 상황입니다. 커밍쏜의 관점으로 피드백 방향을 제시해주세요.'}`;
 
+  if (referenceBlock) VARIABLE_SYSTEM += '\n\n' + REFERENCE_GUIDE;
   if (channelBlock) {
     VARIABLE_SYSTEM += `\n\n[롤모델 채널 평가 지침]
 참여자가 롤모델·벤치마킹 채널을 들었고 아래 user 턴에 '롤모델 채널 리서치' 블록이 있다. 각 채널을 커밍쏜의 기준으로 평가해 피드백에 녹인다.
@@ -642,34 +666,45 @@ ${isPublic
   }
 
   const contextStr = hits.length > 0
-    ? hits.map((h, i) => `[참고 ${i+1} — ${h.docType === 'playbook' ? (h.verified === 'approved' ? '커밍쏜 승인 답변' : '디렉터 검증 답변') + ' · ' : ''}${h.docName}]\n${h.text}`).join('\n\n---\n\n')
+    ? hits.map((h, i) => `[참고 ${i+1} — ${h.docType === 'playbook' ? (h.verified === 'approved' ? '커밍쏜 승인 답변' : '디렉터 검증 답변') + ' · ' : ''}${h.docName}${h.when ? ' · 상담 시기 ' + h.when : ''}]\n${h.text}`).join('\n\n---\n\n')
     : '(검색된 참고 자료 없음 — 핵심 철학을 바탕으로 답변)';
 
 
   let userPrompt;
   if (isPublic) {
     userPrompt = mode === 'structured'
-      ? `질문입니다.\n\n${question}\n\n---\n\n[참고 자료]\n${contextStr}${casesBlock}${channelsBlock}\n\n---\n\n아래 형식으로 답변해주세요:\n\n[핵심 답변]\n(가장 중요한 포인트)\n\n[구체적으로 이렇게 해보세요]\n(실행 가능한 액션 2~3가지)\n\n[한마디]\n(철학이 담긴 한 문장으로 마무리)`
-      : `질문입니다.\n\n${question}\n\n---\n\n[참고 자료]\n${contextStr}${casesBlock}${channelsBlock}\n\n---\n\n커밍쏜이 직접 대화하듯 구어체로 답변해주세요. 질문자의 상황을 먼저 이해하고, 핵심을 짚은 뒤, 다음 스텝으로 마무리. 300~500자 내외.`;
+      ? `질문입니다.\n\n${question}\n\n---\n\n[참고 자료]\n${contextStr}${casesBlock}${channelsBlock}${referencesBlock}\n\n---\n\n아래 형식으로 답변해주세요:\n\n[핵심 답변]\n(가장 중요한 포인트)\n\n[구체적으로 이렇게 해보세요]\n(실행 가능한 액션 2~3가지)\n\n[한마디]\n(철학이 담긴 한 문장으로 마무리)`
+      : `질문입니다.\n\n${question}\n\n---\n\n[참고 자료]\n${contextStr}${casesBlock}${channelsBlock}${referencesBlock}\n\n---\n\n커밍쏜이 직접 대화하듯 구어체로 답변해주세요. 질문자의 상황을 먼저 이해하고, 핵심을 짚은 뒤, 다음 스텝으로 마무리. 300~500자 내외.`;
   } else {
     userPrompt = mode === 'structured'
-      ? `${studentName ? studentName + (req.body.cohort ? ' (' + String(req.body.cohort).slice(0, 10) + ')' : '') : '수강생'}의 미션입니다.${extraContext ? `\n\n[디렉터 메모]\n${extraContext}` : ''}\n\n[제출 내용]\n${question}\n\n---\n\n[참고 자료]\n${contextStr}${casesBlock}${channelsBlock}\n\n---\n\n[✅ 잘 잡고 있는 방향]\n(2가지, 이유 포함)\n\n[🔧 더 디깅이 필요한 부분]\n(2~3가지)\n\n[💡 다음 스텝]\n(실행 가능한 액션 2~3가지)`
-      : `${studentName ? studentName + (req.body.cohort ? ' (' + String(req.body.cohort).slice(0, 10) + ')' : '') : '수강생'}의 미션입니다.${extraContext ? `\n\n[디렉터 메모]\n${extraContext}` : ''}\n\n[제출 내용]\n${question}\n\n---\n\n[참고 자료]\n${contextStr}${casesBlock}${channelsBlock}\n\n---\n\n커밍쏜이 직접 말해주듯 구어체로 피드백을 작성해주세요. Why와 서사를 먼저 짚고, 핵심 방향을 제시하고, 실행 가능한 다음 스텝으로 마무리. 400~600자 내외.`;
+      ? `${studentName ? studentName + (req.body.cohort ? ' (' + String(req.body.cohort).slice(0, 10) + ')' : '') : '수강생'}의 미션입니다.${extraContext ? `\n\n[디렉터 메모]\n${extraContext}` : ''}\n\n[제출 내용]\n${question}\n\n---\n\n[참고 자료]\n${contextStr}${casesBlock}${channelsBlock}${referencesBlock}\n\n---\n\n[✅ 잘 잡고 있는 방향]\n(2가지, 이유 포함)\n\n[🔧 더 디깅이 필요한 부분]\n(2~3가지)\n\n[💡 다음 스텝]\n(실행 가능한 액션 2~3가지)`
+      : `${studentName ? studentName + (req.body.cohort ? ' (' + String(req.body.cohort).slice(0, 10) + ')' : '') : '수강생'}의 미션입니다.${extraContext ? `\n\n[디렉터 메모]\n${extraContext}` : ''}\n\n[제출 내용]\n${question}\n\n---\n\n[참고 자료]\n${contextStr}${casesBlock}${channelsBlock}${referencesBlock}\n\n---\n\n커밍쏜이 직접 말해주듯 구어체로 피드백을 작성해주세요. Why와 서사를 먼저 짚고, 핵심 방향을 제시하고, 실행 가능한 다음 스텝으로 마무리. 400~600자 내외.`;
   }
 
   try {
     // ─── 대화(챗) 모드: 형식 제약 해제 + 커밍쏜 대화 원칙 ───
     if (req.body && req.body.chat) {
       VARIABLE_SYSTEM += '\n\n[대화 모드 지침 — 위의 출력 형식·분량 지시보다 우선]\n지금은 디렉터와 실시간 채팅 중이다. 답변은 바로 시작한다 — 첫 문장부터 먼저 낸다.\n- 대화 흐름에 맞는 자연스러운 길이로 답한다. 간단한 질문엔 간결하게, 로드맵 점검이나 기획 요청엔 깊이 있게.\n- 커밍쏜의 코칭 방식을 따른다: 1) 잘한 점을 인정하되 핵심 문제를 정면으로 짚는다 2) 왜?를 파고든다 — 결핍이 모호하면 메시지도 타겟도 흔들린다 3) 소재는 대중성으로, 차별화는 메시지·페르소나·라이프스타일로 만든다 4) 수익 불안 때문에 방향을 바꾸려는 패턴을 경계시킨다 5) 마지막엔 실행 가능한 다음 스텝을 제시한다.\n- 판단에 필요한 정보가 부족하면 먼저 되묻는다. 근거 없는 확신 대신 참고 자료와 과거 사례에 기반해 말한다.\n- 아이디어 제안 요청에는 구체적 예시(제목·훅·콘텐츠 구조)까지 낸다.\n- 참고 자료에 관련 사례가 있으면 자연스럽게 인용한다.';
-      userPrompt = (extraContext ? '[맥락 정보]\n' + extraContext + '\n\n' : '') + '[참고 자료]\n' + contextStr + casesBlock + channelsBlock + '\n\n---\n\n디렉터의 메시지: ' + question;
+      userPrompt = (extraContext ? '[맥락 정보]\n' + extraContext + '\n\n' : '') + '[참고 자료]\n' + contextStr + casesBlock + channelsBlock + referencesBlock + '\n\n---\n\n디렉터의 메시지: ' + question;
     }
+
+    // 썸네일 이미지가 있으면 user 턴을 [이미지들 + 텍스트] 블록으로. 이미지가 먼저 오는 게 인식이 좋다.
+    const thumbs = (refResearch && refResearch.thumbs) || [];
+    const userContent = thumbs.length
+      ? [
+          { type: 'text', text: `[콘텐츠 레퍼런스 썸네일 ${thumbs.length}장 — 순서대로 #${thumbs.map((t) => t.n).join(', #')}]` },
+          ...thumbs.map((t) => ({ type: 'image', source: { type: 'base64', media_type: t.media_type, data: t.data } })),
+          { type: 'text', text: userPrompt },
+        ]
+      : userPrompt;
+    if (thumbs.length) M.sources.thumbs = thumbs.length;
 
     if (req.body && req.body.stream) {
       const systemBlocks = [cachedBlock(STABLE_SYSTEM), { type: 'text', text: VARIABLE_SYSTEM }];
       const upstream = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: claudeHeaders(CLAUDE_KEY),
-        body: claudeBody(systemBlocks, userPrompt, { stream: true, maxTokens: 12000, effort: 'medium', tools: claudeTools }),
+        body: claudeBody(systemBlocks, userContent, { stream: true, maxTokens: 12000, effort: 'medium', tools: claudeTools }),
       });
       if (!upstream.ok || !upstream.body) {
         const errText = await upstream.text().catch(() => '');
@@ -681,6 +716,7 @@ ${isPublic
         'Connection': 'keep-alive',
       });
       res.write('event: meta\ndata: ' + JSON.stringify({ sources: hits, evidence }) + '\n\n');
+      if (refResearch) res.write('event: status\ndata: ' + JSON.stringify({ t: refResearch.ok ? '📺 레퍼런스 채널 ' + refResearch.tiers.reduce((a, t) => a + t.channels.length, 0) + '개 · 콘텐츠 ' + refResearch.contents.length + '개 조회 완료, 분석 중…' : '⚠️ 레퍼런스 조회가 되지 않아 데이터 없이 답합니다' }) + '\n\n');
       mark('claudeConnect');
       const reader = upstream.body.getReader();
       const decoder = new TextDecoder();
@@ -739,7 +775,7 @@ ${isPublic
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: claudeHeaders(CLAUDE_KEY),
-      body: claudeBody(systemBlocks, userPrompt, { maxTokens: 8000, effort: 'medium', tools: claudeTools }),
+      body: claudeBody(systemBlocks, userContent, { maxTokens: 8000, effort: 'medium', tools: claudeTools }),
     });
     const data = await response.json();
     if (data.error) throw new Error('Claude: ' + data.error.message);

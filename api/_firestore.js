@@ -206,7 +206,12 @@ export async function loadCases() {
         body: r.body || '',
         director: r.director || '',
         cohort: r.cohort || '',
+        round: r.round || '',
         confirmed: !!r.confirmed,
+        source: r.source || '',
+        createdAt: r.createdAt || 0,
+        consultedAt: r.consultedAt || 0,
+        consultDate: r.consultDate || '',
       }))
       .filter((i) => i.summary && i.body);
     console.log('[Firestore] 디렉팅 사례 로드:', items.length + '건');
@@ -234,9 +239,10 @@ export function pickCases(cases, question, topK = 3) {
     if (c.confirmed) score *= 1.2;
     return { c, score };
   });
+  // 겹침 수가 같으면 최신 상담이 앞에 온다 — 커밍쏜의 인사이트는 뒤로 갈수록 정교해진다.
   return scored
     .filter((s) => s.score > 0)
-    .sort((a, b) => b.score - a.score)
+    .sort((a, b) => (b.score - a.score) || ((b.c.consultedAt || 0) - (a.c.consultedAt || 0)))
     .slice(0, topK)
     .map((s) => s.c);
 }
