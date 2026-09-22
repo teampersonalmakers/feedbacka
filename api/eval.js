@@ -46,19 +46,21 @@ async function ask(question, category, skipPlaybook) {
   return res.body.feedback || '';
 }
 
-const JUDGE = `당신은 퍼스널메이커스 팀의 답변 품질 심사관입니다.
-[승인 답변]은 커밍쏜이 직접 검수한 정답입니다. [AI 답변]이 그 정답의 기조와 핵심을 지키는지 채점하세요.
+const JUDGE = `당신은 퍼스널메이커스 팀의 답변 품질 심사관입니다. 기준은 「제2의 커밍쏜 — 판단·데이터·답변 기준서」 3절입니다.
+[승인 답변]은 커밍쏜이 직접 검수한 정답입니다. [AI 답변]을 아래 루브릭으로 5점 만점 채점하세요.
 
-채점 기준 (1~5점)
-5: 핵심 판단과 방향이 같고, 승인 답변에 없는 잘못된 주장도 없다
-4: 방향은 같으나 핵심 포인트 하나가 빠졌거나 표현이 약하다
-3: 절반쯤 맞다. 중요한 포인트가 빠지거나 다른 방향을 섞었다
-2: 방향이 다르다. 일반론이거나 커밍쏜 기조와 어긋난다
-1: 정반대이거나 승인 답변과 무관하다
+5: 진짜 문제를 짚었고, 판단이 커밍쏜(승인 답변) 기준과 같고, 근거가 자료(사례·승인 답변·데이터)에서 나왔고, 전달 가이드(수강생에게 던질 질문·핵심 문장·미션)가 있고, 마지막 줄(✅ 디렉터 선에서 전달 가능 / ⚠️ 커밍쏜 확인 필요)이 맞다
+4: 판단·근거는 맞는데 전달 가이드가 약하거나 마지막 줄이 빠짐
+3: 판단 방향은 맞는데 표면 문제에 답했거나, 근거 없이 원칙만 말함
+2: 일반론. 커밍쏜 자료 없이도 할 수 있는 답. 여러 답을 나열함
+1: 판단이 커밍쏜과 반대(더하라·넓히라고 함, 순서 건너뜀) 또는 지어낸 사례·수치
 
-말투·길이·형식은 채점하지 마세요. 판단의 방향과 핵심 포인트만 봅니다.
+감점(-1, 한 번이라도 있으면): 내부 용어 노출(경로 2, 유형 B, 얼라인먼트, Why/How/What) · 수강생 실명 · "사례 3", "참고 2" 같은 번호 출처 · 마케팅 교과서 용어(STP, JTBD, 퍼널) · 자료에 없는 "반드시·무조건" · 칭찬으로 시작해 칭찬으로 끝남 · 커밍쏜 1인칭("제가 컨설팅에서…")
+가점(+1, 최대 5): 커밍쏜이 실제로 쓴 문장을 그대로 인용 · 같은 판단이 사례 2건 이상 반복됨을 밝힘 · 최신 판단과 옛 판단의 차이를 한 줄로 짚음 · "자료엔 없고 원칙에서 나온 추론"이라고 솔직히 구분
+
+말투·길이·형식 자체는 채점하지 마세요. 판단의 방향, 근거, 전달 가능성만 봅니다.
 반드시 아래 JSON 한 줄만 출력하세요.
-{"score": 1~5 정수, "verdict": "일치|부분|불일치", "reason": "한두 문장. 무엇이 빠졌거나 어긋났는지 구체적으로"}`;
+{"score": 1~5 정수, "verdict": "일치|부분|불일치", "reason": "한두 문장. 무엇이 빠졌거나 어긋났는지 구체적으로", "penalties": ["감점 사유"], "bonuses": ["가점 사유"]}`;
 
 async function judge(question, expected, actual, key) {
   const user = `[질문]\n${question}\n\n[승인 답변]\n${expected}\n\n[AI 답변]\n${actual}`;
@@ -117,7 +119,7 @@ export default async function handler(req, res) {
       try {
         const actual = await ask(p.q, p.category, skipPlaybook);
         const j = await judge(p.q, p.answer, actual, KEY);
-        row = { ...row, actual, score: j.score, verdict: j.verdict, reason: j.reason, model: j.model, ms: Date.now() - t0 };
+        row = { ...row, actual, score: j.score, verdict: j.verdict, reason: j.reason, penalties: j.penalties || [], bonuses: j.bonuses || [], model: j.model, ms: Date.now() - t0 };
       } catch (e) {
         row = { ...row, actual: '', score: 0, verdict: '오류', reason: e.message, ms: Date.now() - t0 };
       }

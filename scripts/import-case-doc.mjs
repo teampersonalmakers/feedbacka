@@ -67,6 +67,8 @@ export function parseCaseDoc(md, fileName) {
   const cards = [];
   const base = `${participant} · ${round} · ${subject}`;
   const ctx = participant ? `${participant} (${meta['고객 유형'] || ''})` : (meta['고객 유형'] || '');
+  // 기준서 2-4: 실명은 문서명(관리용)에만. 카드 요약·본문에는 고객 유형으로 부른다.
+  const who = String(meta['고객 유형'] || participant || '참여자').replace(/\([^)]*\)/g, '').split(/[.,]/)[0].trim().slice(0, 22) || '참여자';
 
   // 1) 요약본 → 카드 1장: 이 회차에서 확정된 판단(주제·결핍·방향)
   {
@@ -81,7 +83,7 @@ export function parseCaseDoc(md, fileName) {
     const topic = get(/주제/), lack = get(/결핍/), over = get(/극복/), dir = get(/방향/), core = get(/코어|메시지/), mission = get(/미션/);
     cards.push({
       key: 'summary',
-      summary: cut(`브랜드 로드맵 ${round} 정리 — ${participant} (${subject})`, 300),
+      summary: cut(`브랜드 로드맵 ${round} 정리 — ${who} (${subject})`, 300),
       situation: cut(`고객: ${meta['고객 유형'] || ''}\n단계: ${meta['컨설팅 단계'] || ''}${meta['WHY 디깅 경로'] ? '\nWHY 디깅 경로: ' + meta['WHY 디깅 경로'].replace(/\*\*/g, '') : ''}`, 2000),
       diagnosis: cut(`${meta['결과'] ? '결과: ' + meta['결과'] + '\n' : ''}${topic}`, 2000),
       prescription: cut([dir && '[방향성]\n' + dir, core && '[코어 키워드·메시지]\n' + core, mission && '[미션]\n' + mission].filter(Boolean).join('\n\n'), 3000),
@@ -111,7 +113,7 @@ export function parseCaseDoc(md, fileName) {
     const q = c.bullets.map((b) => (/"([^"]{8,})"/.exec(b) || [])[1]).filter(Boolean);
     cards.push({
       key: 'case_' + c.letter,
-      summary: cut(`${c.title} — ${participant} ${round}`, 300),
+      summary: cut(`${c.title} — ${who} ${round}`, 300),
       situation: cut(situation, 2000),
       diagnosis: cut(diagnosis || prescription.split('\n')[0] || '', 2000),
       prescription: cut(prescription, 3000),
@@ -126,7 +128,7 @@ export function parseCaseDoc(md, fileName) {
   if (pr.length) {
     cards.push({
       key: 'principles',
-      summary: cut(`커밍쏜 코칭 원칙 — ${subject} (${participant} ${round}에서 드러난 것)`, 300),
+      summary: cut(`커밍쏜 코칭 원칙 — ${subject} (${who} ${round}에서 드러난 것)`, 300),
       situation: cut(`브랜드 로드맵 컨설팅 ${round}. 고객: ${meta['고객 유형'] || ''}`, 2000),
       diagnosis: '',
       prescription: cut(pr.join('\n'), 3000),

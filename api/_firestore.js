@@ -380,6 +380,9 @@ export function addMetrics(m) {
     usage: m.usage || {},
     sources: m.sources || {},
     eval: !!m.eval,   // 자동 평가(api/eval.js)에서 나온 요청 — 통계에서 걸러내기 위해
+    needsOwner: !!m.needsOwner,           // 답변 마지막 줄이 "커밍쏜 확인 필요" — 기준서 4절 지표
+    closedByDirector: !!m.closedByDirector, // "디렉터 선에서 전달 가능"
+
   });
 }
 
