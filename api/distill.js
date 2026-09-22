@@ -118,8 +118,9 @@ export async function distillOne(doc, key) {
 //   코드 검사: 인용(quote)이 녹취에 실제로 있는지 (공백·문장부호 무시, 10자 조각 60% 이상 일치)
 //   모델 검사: 커밍쏜이 실제로 한 판단인지(수강생 말이 아닌지), 처방·이유가 녹취에 근거하는지,
 //             다른 수강생에게도 재사용할 만큼 일반적인지 → 1~5점 + approve/fix/reject
-//   자동 승인 = 점수 ≥ 4 + verdict approve + 인용 확인(코드 또는 모델). 나머지는 초안으로 남고
-//   점수·문제점이 카드에 붙어 커밍쏜이 볼 때 우선순위가 된다. 자동 반려는 하지 않는다.
+//   승인 후보(eligible) = 점수 ≥ 4 + verdict approve + 인용 확인(코드 또는 모델) + 처방 있음.
+//   기본은 점수·판정만 붙이고 상태는 그대로 둔다. 커밍쏜이 기준을 확인한 뒤 PREREVIEW_AUTO_APPROVE=on
+//   으로 켜면 승인 후보만 자동 승인된다. 자동 반려는 어떤 경우에도 하지 않는다.
 const REVIEW_MODEL = 'claude-sonnet-5';
 const REVIEW_SYSTEM = `당신은 퍼스널메이커스 팀의 검수자입니다. 녹취 원문과, 그 녹취에서 AI가 뽑은 "판단 카드" 초안들을 받습니다.
 각 카드가 커밍쏜(코치)의 실제 판단을 정확히 담았는지 검사합니다.
@@ -174,8 +175,12 @@ async function prereviewBatch(db, KEY, maxDocs = 6) {
         const verdict = ['approve', 'fix', 'reject'].includes(v.verdict) ? v.verdict : 'fix';
         const quoteCode = quoteInText(c.quote, t.text);
         const quoteOk = quoteCode || v.quoteOk === true;
-        const auto = score >= 4 && verdict === 'approve' && quoteOk && !!c.prescription;
-        const review = { score, verdict, quoteOk, quoteCode, issue: String(v.issue || '').slice(0, 300), model: d.model || REVIEW_MODEL, at: now, auto };
+        // 자동 승인은 커밍쏜이 검수 기준을 확인하고 켜기 전까지 꺼 둔다(PREREVIEW_AUTO_APPROVE=on).
+        // 그전까지는 점수·판정·문제점만 카드에 붙이고 상태(초안)는 건드리지 않는다.
+        const autoOn = String(process.env.PREREVIEW_AUTO_APPROVE || 'off').toLowerCase() === 'on';
+        const eligible = score >= 4 && verdict === 'approve' && quoteOk && !!c.prescription;
+        const auto = autoOn && eligible;
+        const review = { score, verdict, quoteOk, quoteCode, issue: String(v.issue || '').slice(0, 300), model: d.model || REVIEW_MODEL, at: now, auto, eligible };
         const patch = { review };
         if (auto) Object.assign(patch, { status: 'approved', aiApplied: true, confirmed: false, approvedBy: 'ai', approvedAt: now, embeddedAt: 0 });
         wb.set(c.ref, patch, { merge: true });

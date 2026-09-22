@@ -837,7 +837,7 @@ document.addEventListener('drop', function(e) {
 // 앱을 열 때마다 서버 유지보수를 조용히 돌린다. 실패해도 화면에는 아무 영향이 없다.
 //   1) /api/backfill      — 승인됐지만 아직 검색 자산(벡터)으로 안 올라간 사례·Q&A·문서를 올린다. 누구나, 10분에 1회.
 //   2) /api/distill?prereview=1 — (커밍쏜 로그인 때만) 초안 판단 카드를 녹취와 대조해 AI 가 사전 검수한다.
-//      확실한 카드는 자동 승인되고, 나머지엔 점수·문제점이 붙는다. 남은 게 없을 때까지 최대 30번 반복.
+//      카드에 점수·판정·문제점이 붙는다(상태는 바꾸지 않음 — 승인은 커밍쏜만). 남은 게 없을 때까지 최대 30번 반복.
 window.addEventListener('pmfire:ready', async function() {
   try { fetch('/api/backfill').catch(function() {}); } catch(e) {}
   try {
