@@ -834,6 +834,18 @@ document.addEventListener('drop', function(e) {
 
 // ─── Firestore 동기화 ────────────────────────────────────────────────────────
 // localStorage 는 즉시 렌더용 캐시, Firestore 가 진짜 저장소.
+// 커밍쏜 로그인 때 검색 자산 백필 — 승인됐지만 아직 임베딩 안 된 사례·Q&A·소스를 서버가 올린다.
+// 설정 화면을 열지 않아도 앱을 켤 때마다 조금씩 채워진다. 실패해도 조용히 넘어간다.
+window.addEventListener('pmfire:ready', function() {
+  try {
+    if (!(window.PMFire && window.PMFire.isOwner && window.PMFire.isOwner())) return;
+    window.PMFire.idToken().then(function(tok) {
+      return fetch('/api/distill?backfill=1', { headers: { Authorization: 'Bearer ' + tok } });
+    }).then(function(r) { return r.json(); }).then(function(d) {
+      var b = d && d.backfill; if (b && (b.cases || b.playbook || b.sources)) console.info('[PMFire] 검색 자산 백필:', JSON.stringify(b));
+    }).catch(function() {});
+  } catch(e) {}
+});
 // PMFire 가 없으면(설정 누락/네트워크 차단) 아래는 전부 no-op 이고 기존 동작 그대로다.
 (function() {
   var _persist = persistConvs;

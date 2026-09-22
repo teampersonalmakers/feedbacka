@@ -19,7 +19,7 @@ import { createHash } from 'crypto';
 import { requireOwner } from './_auth.js';
 import { getDb, COL, firestoreEnabled } from './_firestore.js';
 import { claudeHeaders, claudeBody, pickText } from './_claude.js';
-import { upsertCaseChunk, upsertPlaybookChunk } from './_vectors.js';
+import { upsertCaseChunk, upsertPlaybookChunk, upsertKbChunks } from './_vectors.js';
 
 export const config = { maxDuration: 300 };
 
@@ -113,6 +113,25 @@ export async function distillOne(doc, key) {
   return { cards, model: d.model || DISTILL_MODEL, usage: d.usage || {} };
 }
 
+// 아직 검색 자산(chunks)으로 안 올라간 승인 사례·승인 Q&A·지식 소스를 조금씩 올린다.
+// 노션에서 옮겨온 34건, 스크립트로 넣은 문서처럼 버튼을 누르지 않은 것들이 대상.
+// 한 번에 사례 60·Q&A 10·소스 3 — 소스는 청크가 많아 임베딩이 오래 걸린다.
+async function backfillEmbeddings() {
+  const db = getDb();
+  const out = { cases: 0, playbook: 0, sources: 0 };
+  const GK = process.env.GEMINI_API_KEY;
+  if (!db || !GK) return out;
+  try {
+    const cs = await db.collection(COL.cases).where('aiApplied', '==', true).limit(300).get();
+    for (const d of cs.docs.filter((x) => !x.data().embeddedAt).slice(0, 60)) { out.cases += await upsertCaseChunk(d.id, GK); }
+    const pb = await db.collection(COL.playbook).where('status', '==', '승인').limit(100).get();
+    for (const d of pb.docs.filter((x) => !x.data().embeddedAt).slice(0, 10)) { out.playbook += await upsertPlaybookChunk(d.id, GK); }
+    const ks = await db.collection(COL.kbSources).limit(300).get();
+    for (const d of ks.docs.filter((x) => !x.data().embeddedAt && String(x.data().transcript || '').length >= 40).slice(0, 3)) { out.sources += (await upsertKbChunks(d.id, GK)) ? 1 : 0; }
+  } catch (e) { console.warn('[distill] 백필 실패(무시):', e.message); }
+  return out;
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -122,6 +141,11 @@ export default async function handler(req, res) {
   if (!user) return;
   if (!firestoreEnabled()) return res.status(500).json({ error: 'Firestore 미설정' });
   const db = getDb();
+
+  // 코치 화면이 커밍쏜 로그인 때 ?backfill=1 로 부른다 — 설정 화면을 안 열어도 검색 자산이 채워진다.
+  if (req.method === 'GET' && req.query && req.query.backfill) {
+    return res.status(200).json({ backfill: await backfillEmbeddings() });
+  }
 
   const targets = loadTargets();
   const progSnap = await db.collection(COL.distill).get();
@@ -133,16 +157,7 @@ export default async function handler(req, res) {
     const drafts = (await db.collection(COL.cases).where('status', '==', 'draft').count().get()).data().count;
     // 설정 화면을 열 때마다 아직 검색 자산으로 안 올라간 승인 사례·승인 Q&A 를 조금씩 올린다.
     // (노션에서 옮겨온 34건처럼 버튼을 누르지 않아도 두어 번 열면 다 올라간다)
-    let backfill = { cases: 0, playbook: 0 };
-    const GK = process.env.GEMINI_API_KEY;
-    if (GK) {
-      try {
-        const cs = await db.collection(COL.cases).where('aiApplied', '==', true).limit(200).get();
-        for (const d of cs.docs.filter((x) => !x.data().embeddedAt).slice(0, 20)) { backfill.cases += await upsertCaseChunk(d.id, GK); }
-        const pb = await db.collection(COL.playbook).where('status', '==', '승인').limit(100).get();
-        for (const d of pb.docs.filter((x) => !x.data().embeddedAt).slice(0, 10)) { backfill.playbook += await upsertPlaybookChunk(d.id, GK); }
-      } catch (e) { console.warn('[distill] 백필 실패(무시):', e.message); }
-    }
+    const backfill = await backfillEmbeddings();
     return res.status(200).json({ total: targets.length, done: done.length, failed: failed.length, drafts, backfill,
       totalChars: targets.reduce((a, t) => a + t.chars, 0), model: DISTILL_MODEL });
   }
