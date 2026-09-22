@@ -13,6 +13,9 @@
     "api/distill.js": {
       "maxDuration": 300,
       "includeFiles": "knowledge/base*.json"
+    },
+    "api/backfill.js": {
+      "maxDuration": 120
     }
   }
 }

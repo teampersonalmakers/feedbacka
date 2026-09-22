@@ -834,17 +834,29 @@ document.addEventListener('drop', function(e) {
 
 // ─── Firestore 동기화 ────────────────────────────────────────────────────────
 // localStorage 는 즉시 렌더용 캐시, Firestore 가 진짜 저장소.
-// 커밍쏜 로그인 때 검색 자산 백필 — 승인됐지만 아직 임베딩 안 된 사례·Q&A·소스를 서버가 올린다.
-// 설정 화면을 열지 않아도 앱을 켤 때마다 조금씩 채워진다. 실패해도 조용히 넘어간다.
-window.addEventListener('pmfire:ready', function() {
+// 앱을 열 때마다 서버 유지보수를 조용히 돌린다. 실패해도 화면에는 아무 영향이 없다.
+//   1) /api/backfill      — 승인됐지만 아직 검색 자산(벡터)으로 안 올라간 사례·Q&A·문서를 올린다. 누구나, 10분에 1회.
+//   2) /api/distill?prereview=1 — (커밍쏜 로그인 때만) 초안 판단 카드를 녹취와 대조해 AI 가 사전 검수한다.
+//      확실한 카드는 자동 승인되고, 나머지엔 점수·문제점이 붙는다. 남은 게 없을 때까지 최대 30번 반복.
+window.addEventListener('pmfire:ready', async function() {
+  try { fetch('/api/backfill').catch(function() {}); } catch(e) {}
   try {
     if (!(window.PMFire && window.PMFire.isOwner && window.PMFire.isOwner())) return;
-    window.PMFire.idToken().then(function(tok) {
-      return fetch('/api/distill?backfill=1', { headers: { Authorization: 'Bearer ' + tok } });
-    }).then(function(r) { return r.json(); }).then(function(d) {
-      var b = d && d.backfill; if (b && (b.cases || b.playbook || b.sources)) console.info('[PMFire] 검색 자산 백필:', JSON.stringify(b));
-    }).catch(function() {});
-  } catch(e) {}
+    if (sessionStorage.getItem('pm_prereview_done')) return;   // 탭당 한 번만
+    var total = { reviewed: 0, approved: 0 };
+    for (var i = 0; i < 30; i++) {
+      var tok = await window.PMFire.idToken();
+      var r = await fetch('/api/distill?prereview=1&docs=6', { headers: { Authorization: 'Bearer ' + tok } });
+      var d = await r.json();
+      var p = d && d.prereview; if (!p) break;
+      total.reviewed += p.reviewed || 0; total.approved += p.approved || 0;
+      console.info('[PMFire] AI 사전 검수:', JSON.stringify(p));
+      if (!p.docs || p.remaining <= 0) break;
+      await new Promise(function(ok) { setTimeout(ok, 1500); });
+    }
+    sessionStorage.setItem('pm_prereview_done', '1');
+    if (total.approved) { var tok2 = await window.PMFire.idToken(); fetch('/api/distill?backfill=1', { headers: { Authorization: 'Bearer ' + tok2 } }).catch(function() {}); }
+  } catch(e) { console.warn('[PMFire] 사전 검수 중단(무시):', e && e.message); }
 });
 // PMFire 가 없으면(설정 누락/네트워크 차단) 아래는 전부 no-op 이고 기존 동작 그대로다.
 (function() {

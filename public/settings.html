@@ -209,7 +209,7 @@ body { background: var(--bg); color: var(--ink); font-family: var(--font); min-h
     <div class="intro">
       <h1>디렉팅 사례</h1>
       <p>컨설팅·코칭에서 나온 커밍쏜의 판단 기준입니다. <b>승인(AI 반영)</b>된 카드만 질문과 의미가 가까운 것을 골라 AI가 참고합니다.<br>
-      <span class="meta">빠른 검수 팁: 녹취 하나를 골라 카드를 훑고 → 맞는 것 전체 선택 → 선택 승인. <b>근거 약함</b> 표시만 열어서 확인하면 됩니다.</span></p>
+      <span class="meta">커밍쏜이 코치 화면에 로그인하면 AI가 초안을 녹취와 대조해 사전 검수합니다. 근거가 확인된 카드는 <b>AI 자동 승인</b>으로 바로 반영되고, 나머지엔 <b>AI 검수 점수</b>가 붙습니다. 점수 낮은 것과 <b>근거 약함</b>만 열어 보면 됩니다. 자동 승인이 틀렸으면 열어서 반려하세요.</span></p>
     </div>
     <div class="card" style="margin-bottom:16px">
       <div class="card-head"><span class="ord">🧪</span><h3>녹취 → 판단 카드 증류</h3>
@@ -385,6 +385,14 @@ var cases = [], caseFilter = '초안', caseKw = '', caseSrc = '', caseTag = '';
 var selected = {};   // id → true (일괄 처리용)
 // 근거가 약한 카드: 커밍쏜 발화 인용이 없거나 처방·이유가 비어 있으면 검수 때 눈여겨본다.
 function weak(c) { return c.status === 'draft' && (!c.quote || !c.prescription || !c.reasoning); }
+// AI 사전 검수 결과 — 녹취 원문과 대조한 점수. 자동 승인된 카드는 파란 표시(틀리면 반려하면 됨).
+function reviewPill(c) {
+  var r = c.review; if (!r || !r.score) return '';
+  var tip = 'AI 사전 검수 ' + r.score + '/5 · ' + (r.verdict === 'approve' ? '승인 추천' : r.verdict === 'reject' ? '반려 추천' : '보완 필요') + (r.quoteOk ? ' · 인용 확인됨' : ' · 인용 미확인') + (r.issue ? '\n' + r.issue : '');
+  if (c.approvedBy === 'ai') return '<span class="pill" style="background:var(--accent-soft);color:var(--accent);font-size:10px;padding:2px 6px;margin-right:6px" title="' + esc(tip) + '\n근거가 확인돼 자동 승인됐습니다. 커밍쏜 판단과 다르면 열어서 반려하세요">AI 자동 승인 ' + r.score + '/5</span>';
+  var col = r.verdict === 'reject' ? 'danger' : (r.score >= 4 ? 'ok' : 'warn');
+  return '<span class="pill" style="background:var(--' + col + '-soft);color:var(--' + col + ');font-size:10px;padding:2px 6px;margin-right:6px" title="' + esc(tip) + '">AI 검수 ' + r.score + '/5</span>';
+}
 function caseState(c) {
   if (c.status === 'draft') return '초안';
   if (c.status === 'rejected') return '반려';
@@ -392,7 +400,7 @@ function caseState(c) {
 }
 function visibleCases() {
   var kw = caseKw.trim().toLowerCase();
-  return cases.filter(function(c) {
+  var list = cases.filter(function(c) {
     var st = caseState(c);
     if (caseFilter === '초안' && st !== '초안') return false;
     if (caseFilter === 'AI 반영' && st !== 'AI 반영') return false;
@@ -402,6 +410,9 @@ function visibleCases() {
     if (!kw) return true;
     return ((c.summary || '') + ' ' + (c.body || '') + ' ' + (c.situation || '') + ' ' + (c.prescription || '') + ' ' + (c.participants || '') + ' ' + (c.director || '') + ' ' + (c.tags || []).join(' ')).toLowerCase().indexOf(kw) >= 0;
   });
+  // 초안 탭은 AI 검수 점수 높은 순 — 위에서부터 훑어 일괄 승인하기 좋게. 미검수는 뒤로.
+  if (caseFilter === '초안') list.sort(function(a, b) { return ((b.review && b.review.score) || 0) - ((a.review && a.review.score) || 0); });
+  return list;
 }
 async function embedApi(body) {
   var token = await window.PMFire.idToken();
@@ -452,6 +463,7 @@ function renderCases() {
       '<div class="s">' + (c.status === 'draft' ? '<span class="pill" style="background:var(--warn-soft);color:var(--warn);font-size:10px;padding:2px 6px;margin-right:6px">초안</span>' : '') +
         (c.aiApplied ? '<span class="pill" style="background:var(--ok-soft);color:var(--ok);font-size:10px;padding:2px 6px;margin-right:6px">AI 반영</span>' : '') +
         (weak(c) ? '<span class="pill" style="background:var(--danger-soft);color:var(--danger);font-size:10px;padding:2px 6px;margin-right:6px" title="커밍쏜 발화 인용이 없거나 처방·이유가 비었습니다. 열어서 확인하세요">근거 약함</span>' : '') +
+        reviewPill(c) +
         esc(c.summary || '(요약 없음)') +
         '<small>' + tags + esc([c.round, c.participants].filter(Boolean).join(' · ')) + '</small></div>' +
       '<div class="cell hide-sm">' + esc(c.cohort || '') + '</div>' +
