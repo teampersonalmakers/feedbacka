@@ -355,7 +355,13 @@ async function patternsStep(db, KEY, { force = false, maxBatches = 2 } = {}) {
     try {
       const arr = await claudeJson(EXTRACT_PATTERNS_SYSTEM, user, KEY, 6000);
       st.results[i] = arr.filter((x) => x && x.pattern).map((x) => ({ pattern: String(x.pattern).slice(0, 200), cards: (Array.isArray(x.cards) ? x.cards : []).map(String).slice(0, 60) }));
-    } catch (e) { errors++; st.results[i] = []; st['error_' + i] = String(e.message).slice(0, 160); console.warn('[patterns] 배치 실패', i, e.message.slice(0, 100)); }
+    } catch (e) {
+      // 실패한 배치는 '끝난 것'으로 치지 않는다 — 다음 호출(새로고침)에서 그 배치만 다시 돈다. (크레딧 소진·일시 오류 대비)
+      errors++; st['error_' + i] = String(e.message).slice(0, 160); console.warn('[patterns] 배치 실패', i, e.message.slice(0, 100));
+      st.at = Date.now(); await ref.set(st);
+      return { status: 'error', total: st.total, done: Object.keys(st.results).length, remaining: st.total - Object.keys(st.results).length, error: st['error_' + i], resumable: true };
+    }
+    delete st['error_' + i];
     st.done = Object.keys(st.results).length; st.at = Date.now(); processed++;
     await ref.set(st);
   }
