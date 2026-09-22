@@ -464,17 +464,17 @@ function addResearch(b, evidence) {
 function addReferences(b, evidence) {
   var r = evidence && evidence.references; if (!r || !r.contents || !r.contents.length) return;
   var d = document.createElement('div'); d.className = 'refs';
-  var h = document.createElement('div'); h.className = 'rh'; h.textContent = '📺 콘텐츠 레퍼런스 (미드폼 4~20분) · 주제: ' + (r.topic || '') + ' · 답변의 #번호와 같음'; d.appendChild(h);
+  var h = document.createElement('div'); h.className = 'rh'; h.textContent = '📺 여러 채널에서 동시에 잘된 소재 (' + (r.shorts ? '숏폼만' : '숏폼 제외') + ') · 주제: ' + (r.topic || '') + ' · 답변의 #번호와 같음'; d.appendChild(h);
   var g = document.createElement('div'); g.className = 'grid';
   var KIND = { trend: '트렌드', evergreen: '에버그린' };
   r.contents.forEach(function(c, i) {
     var a = document.createElement('a'); a.href = c.url; a.target = '_blank'; a.rel = 'noopener';
     var t = document.createElement('div'); t.className = 'thumb';
     var img = document.createElement('img'); img.src = c.thumb; img.alt = c.title; img.loading = 'lazy'; t.appendChild(img);
-    var n = document.createElement('span'); n.textContent = '#' + (c.n || (i + 1)) + (c.kind ? ' · ' + (KIND[c.kind] || c.kind) : '') + (c.belowBar ? ' · 기준 미달' : ''); t.appendChild(n);
+    var n = document.createElement('span'); n.textContent = '#' + (c.n || (i + 1)) + (c.kind ? ' · ' + (KIND[c.kind] || c.kind) : ''); t.appendChild(n);
     var cap = document.createElement('div'); cap.className = 'cap';
     var bb = document.createElement('b'); bb.textContent = c.title; bb.title = c.title; cap.appendChild(bb);
-    cap.appendChild(document.createTextNode(c.channelTitle + ' · 구독 ' + fmtKo(c.subscribers) + ' · 조회 ' + fmtKo(c.views) + ' (' + c.ratio + '배)' + (c.keyword ? ' · "' + c.keyword + '"' : '')));
+    cap.appendChild(document.createTextNode((c.topic ? '소재: ' + c.topic + ' · ' : '') + c.channelTitle + ' · 구독 ' + fmtKo(c.subscribers) + ' · 조회 ' + fmtKo(c.views) + ' (' + c.ratio + '배)'));
     a.appendChild(t); a.appendChild(cap); g.appendChild(a);
   });
   d.appendChild(g); b.bubble.appendChild(d);
@@ -987,19 +987,16 @@ window.addEventListener('pmfire:ready', async function() {
   })();
   // 3) 녹취 공통 판단 패턴 추출 — 사전 검수와 별개로 돈다. 하루 한 번(서버가 24시간 내면 건너뜀).
   //    결과는 설정 › 논리 체크 후보에 "후보"로만 들어간다.
+  //    탭 플래그를 두지 않는다 — 끝났으면 서버가 첫 호출에 skipped 를 돌려주고(비용 0), 실패했던 병합은 새로고침 때 다시 시도된다.
   (async function() {
-    if (sessionStorage.getItem('pm_patterns_done')) return;
     try {
-      var settled = true;
       for (var j = 0; j < 12; j++) {
         var rp = await fetch('/api/distill?patterns=1&batches=2', await auth());
         var dp = await rp.json(); var pp = dp && dp.patterns; if (!pp) break;
         console.info('[PMFire] 패턴 추출:', JSON.stringify(pp));
-        if (pp.status === 'error') { settled = false; break; }   // 실패는 플래그를 남기지 않는다 — 다음 새로고침 때 병합만 다시 시도
         if (pp.status !== 'running') break;
         await sleep(1500);
       }
-      if (settled) sessionStorage.setItem('pm_patterns_done', '1');
     } catch(e) { console.warn('[PMFire] 패턴 추출 중단(무시):', e && e.message); }
   })();
 });

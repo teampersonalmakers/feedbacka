@@ -551,9 +551,9 @@ function gateFatal(detail) {
             // 롤모델 채널 리서치 요약 (📺 줄). 디렉터도 보는 값이라 함께 남긴다.
             // 레퍼런스 리서치 요약 (썸네일 그리드용). 이미지 자체는 저장하지 않는다 — URL 만.
             references: turn.evidence.references ? {
-              topic: cut(turn.evidence.references.topic || '', 120), ok: !!turn.evidence.references.ok,
+              topic: cut(turn.evidence.references.topic || '', 120), ok: !!turn.evidence.references.ok, shorts: !!turn.evidence.references.shorts,
               contents: (turn.evidence.references.contents || []).slice(0, 15).map((c) => ({
-                id: cut(c.id || '', 20), n: Number(c.n) || 0, kind: cut(c.kind || '', 12), keyword: cut(c.keyword || '', 40), belowBar: !!c.belowBar,
+                id: cut(c.id || '', 20), n: Number(c.n) || 0, kind: cut(c.kind || '', 12), keyword: cut(c.keyword || '', 40), topic: cut(c.topic || '', 60),
                 title: cut(c.title || '', 120), channelTitle: cut(c.channelTitle || '', 80), subscribers: Number(c.subscribers) || 0,
                 views: Number(c.views) || 0, ratio: Number(c.ratio) || 0, publishedAt: cut(c.publishedAt || '', 10), thumb: cut(c.thumb || '', 120), url: cut(c.url || '', 120),
               })),

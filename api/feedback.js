@@ -455,7 +455,7 @@ export default async function handler(req, res) {
       try {
         refResearch = await referenceResearch({ question: String(question), context: String(req.body.extraContext || ''), studentName: String(studentName || '').trim(), claudeKey: CLAUDE_KEY, auth: await youtubeAuth() });
         mark('references');
-      } catch (e) { console.warn('레퍼런스 리서치 실패(무시):', e.message.slice(0, 120)); refResearch = { ok: false, topic: '', queries: [], tiers: [], contents: [], thumbs: [], errors: [String(e.message).slice(0, 120)] }; }
+      } catch (e) { console.warn('레퍼런스 리서치 실패(무시):', e.message.slice(0, 120)); refResearch = { ok: false, topic: '', queries: [], tiers: [], topics: [], keywords: [], thumbs: [], errors: [String(e.message).slice(0, 120)] }; }
     })();
   }
 
@@ -508,7 +508,7 @@ export default async function handler(req, res) {
   }
   if (channelPromise) await channelPromise;
   if (refPromise) await refPromise;
-  if (refResearch) { M.sources.references = refResearch.ok ? refResearch.contents.length : 0; M.sources.referencesErrors = refResearch.errors.length; }
+  if (refResearch) { M.sources.references = refResearch.ok ? (refResearch.topics || []).length + (refResearch.keywords || []).reduce((a, k) => a + k.topics.length, 0) : 0; M.sources.referencesQualified = refResearch.qualified || 0; M.sources.referencesErrors = refResearch.errors.length; }
   M.sources.channels = channelResearch.profiles.length;
   M.sources.channelsUnresolved = channelResearch.unresolved.length;
   M.sources.channelsBackend = channelResearch.backend;
@@ -779,7 +779,7 @@ ${isPublic
         'Connection': 'keep-alive',
       });
       res.write('event: meta\ndata: ' + JSON.stringify({ sources: hits, evidence }) + '\n\n');
-      if (refResearch) res.write('event: status\ndata: ' + JSON.stringify({ t: refResearch.ok ? '📺 레퍼런스 채널 ' + refResearch.tiers.reduce((a, t) => a + t.channels.length, 0) + '개 · 콘텐츠 ' + refResearch.contents.length + '개 조회 완료, 분석 중…' : '⚠️ 레퍼런스 조회가 되지 않아 데이터 없이 답합니다' }) + '\n\n');
+      if (refResearch) res.write('event: status\ndata: ' + JSON.stringify({ t: refResearch.ok ? '📺 레퍼런스 채널 ' + refResearch.tiers.reduce((a, t) => a + t.channels.length, 0) + '개 · 교차 채널 소재 ' + ((refResearch.topics || []).length + (refResearch.keywords || []).reduce((a, k) => a + k.topics.length, 0)) + '개 조회 완료, 분석 중…' : '⚠️ 레퍼런스 조회가 되지 않아 데이터 없이 답합니다' }) + '\n\n');
       mark('claudeConnect');
       const reader = upstream.body.getReader();
       const decoder = new TextDecoder();
