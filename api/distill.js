@@ -69,26 +69,48 @@ const SYSTEM = `당신은 퍼스널메이커스 팀의 컨설팅 녹취를 "판�
 
 // 모델이 낸 JSON 은 문자열 안에 생 줄바꿈·탭이 섞이거나 끝에 쉼표가 남을 때가 있다.
 // (140편 중 3편이 이걸로 실패했다) 그대로 파싱 → 실패하면 고쳐서 다시.
+// 모델이 낸 JSON 을 고쳐 읽는다. 문자열 안의 줄바꿈·제어문자, 끝의 쉼표, 그리고 문자열 안의 이스케이프 안 된 큰따옴표
+// (예: "고객이 "좋아요"로 끝나면") — 따옴표 뒤에 , } ] : 가 오지 않으면 문자열이 닫힌 게 아니라고 보고 \" 로 바꾼다.
+// 그래도 안 읽히면 객체를 하나씩 잘라 읽히는 것만 살린다(배열 입력일 때) — 한 항목의 오류로 전체를 버리지 않게.
 export function parseCards(raw) {
   try { return JSON.parse(raw); } catch {}
-  let fixed = '';
-  let inStr = false, esc = false;
-  for (const ch of raw) {
-    if (inStr) {
-      if (esc) { fixed += ch; esc = false; continue; }
-      if (ch === '\\') { fixed += ch; esc = true; continue; }
-      if (ch === '"') { inStr = false; fixed += ch; continue; }
-      if (ch === '\n') { fixed += '\\n'; continue; }
-      if (ch === '\r') continue;
-      if (ch === '\t') { fixed += '\\t'; continue; }
-      if (ch.charCodeAt(0) < 32) continue;
-      fixed += ch; continue;
+  const repair = (src) => {
+    let fixed = '';
+    let inStr = false, esc = false;
+    const chars = [...src];
+    for (let i = 0; i < chars.length; i++) {
+      const ch = chars[i];
+      if (inStr) {
+        if (esc) { fixed += ch; esc = false; continue; }
+        if (ch === '\\') { fixed += ch; esc = true; continue; }
+        if (ch === '"') {
+          let j = i + 1; while (j < chars.length && /\s/.test(chars[j])) j++;
+          const next = j < chars.length ? chars[j] : '';
+          if (next === '' || ',}]:'.includes(next)) { inStr = false; fixed += ch; }
+          else fixed += '\\"';
+          continue;
+        }
+        if (ch === '\n') { fixed += '\\n'; continue; }
+        if (ch === '\r') continue;
+        if (ch === '\t') { fixed += '\\t'; continue; }
+        if (ch.charCodeAt(0) < 32) continue;
+        fixed += ch; continue;
+      }
+      if (ch === '"') inStr = true;
+      fixed += ch;
     }
-    if (ch === '"') inStr = true;
-    fixed += ch;
+    return fixed.replace(/,\s*([}\]])/g, '$1');
+  };
+  const fixed = repair(raw);
+  try { return JSON.parse(fixed); } catch (e) {
+    // 배열이면 객체 단위로 살린다
+    if (!/^\s*\[/.test(fixed)) throw e;
+    const items = [];
+    const re = /\{[^{}]*\}/g; let m;
+    while ((m = re.exec(fixed))) { try { items.push(JSON.parse(m[0])); } catch { try { items.push(JSON.parse(repair(m[0]))); } catch {} } }
+    if (!items.length) throw e;
+    return items;
   }
-  fixed = fixed.replace(/,\s*([}\]])/g, '$1');
-  return JSON.parse(fixed);
 }
 
 export function meta(name) {
@@ -232,13 +254,13 @@ const EXTRACT_PATTERNS_SYSTEM = `당신은 퍼스널메이커스 팀의 분석�
 - 그 수강생만의 사정이 아니라 다른 수강생에게도 적용되는 판단 기준만.
 - 카드 2장 이상에서 반복되는 것을 우선. 1장뿐이어도 분명한 원칙이면 넣되 cards 에 그 1장만.
 - 순서·타겟·결핍·코어 키워드·메시지·콘텐츠·수익화·멘탈 등 주제를 가리지 않는다.
-- 커밍쏜의 표현을 살리되 내부 용어(경로 1/2, 유형 A/B, 얼라인먼트)는 쓰지 않는다.
+- 커밍쏜의 표현을 살리되 내부 용어(경로 1/2, 유형 A/B, 얼라인먼트)는 쓰지 않는다. 문장 안에 큰따옴표(")를 쓰지 않는다.
 출력은 JSON 배열만. [{"pattern": "원칙 한 줄", "cards": ["카드id", ...]}]`;
 // 병합 출력은 후보 번호(from)만 적게 한다 — 카드 id 를 다시 쓰게 하면 출력이 길어져 한도에서 잘린다(첫 실행이 그렇게 실패했다).
 const MERGE_PATTERNS_SYSTEM = `당신은 퍼스널메이커스 팀의 분석가입니다. [기존 논리 체크]와 여러 배치에서 뽑은 [패턴 후보]를 받습니다.
 1) 뜻이 같은 후보끼리 하나로 합칩니다. from 에는 합친 후보들의 번호를 전부 적습니다.
 2) 각 항목이 기존 논리 체크의 몇 번과 같은 뜻인지 표시합니다(matches: 번호, 없으면 0). 기존 것을 더 구체화하는 정도면 그 번호를 적습니다.
-3) 문장은 지침 형식 20~120자, 단정형. 내부 용어 금지.
+3) 문장은 지침 형식 20~120자, 단정형. 내부 용어 금지. 문장 안에 큰따옴표(")를 쓰지 않는다 — 인용은 작은따옴표나 「」로.
 4) 카드 id 는 쓰지 않습니다. 후보 번호만 씁니다.
 출력은 JSON 배열만. [{"text": "원칙 한 줄", "matches": 0, "from": [후보 번호, ...]}]`;
 
@@ -311,6 +333,19 @@ async function patternsStep(db, KEY, { force = false, maxBatches = 2 } = {}) {
   st.status = 'done'; st.at = Date.now(); st.candidates = patterns.length;
   await ref.set({ status: 'done', at: st.at, total: st.total, done: st.done, cards: st.cards, candidates: patterns.length });
   return { status: 'done', total: st.total, done: st.done, candidates: patterns.length, cardsUsed: st.cards };
+}
+
+// 실패한 병합 자동 재시도 — 배치는 다 끝났는데 병합만 error 로 남은 상태를, 공개 백필 호출(/api/backfill)에서
+// 1시간에 최대 1번 다시 시도한다. 배치를 다시 돌리지 않으니 비용은 Sonnet 호출 1번. 오너 로그인이 없어도 스스로 낫는다.
+const MERGE_RETRY_GAP_MS = 60 * 60 * 1000;
+export async function patternsMergeRetry(db, KEY) {
+  if (!db || !KEY) return { skipped: true, reason: 'no-db-or-key' };
+  const ref = db.collection(COL.distill).doc(PATTERN_DOC);
+  const st = (await ref.get()).data();
+  if (!st || st.status !== 'error' || !(st.done >= st.total)) return { skipped: true, reason: 'not-mergeable' };
+  if (Date.now() - (st.at || 0) < MERGE_RETRY_GAP_MS) return { skipped: true, reason: 'recent', nextInSec: Math.ceil((MERGE_RETRY_GAP_MS - (Date.now() - (st.at || 0))) / 1000) };
+  await ref.set({ at: Date.now() }, { merge: true });   // 먼저 시각을 찍어 동시 호출을 막는다
+  return patternsStep(db, KEY, { maxBatches: 0 });
 }
 
 export default async function handler(req, res) {
