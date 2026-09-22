@@ -47,7 +47,7 @@ export function parseCaseDoc(md, fileName) {
 
   const meta = {};
   for (const l of lines.slice(0, 15)) {
-    const mm = /^- (고객 유형|컨설팅 단계|결과|태그):\s*(.+)$/.exec(l);
+    const mm = /^- (고객 유형|컨설팅 단계|결과|태그|WHY 디깅 경로):\s*(.+)$/.exec(l);
     if (mm) meta[mm[1]] = mm[2].trim();
   }
   const docTags = (meta['태그'] || '').split(/\s+/).map((t) => t.replace(/^#/, '')).filter(Boolean);
@@ -82,7 +82,7 @@ export function parseCaseDoc(md, fileName) {
     cards.push({
       key: 'summary',
       summary: cut(`브랜드 로드맵 ${round} 정리 — ${participant} (${subject})`, 300),
-      situation: cut(`고객: ${meta['고객 유형'] || ''}\n단계: ${meta['컨설팅 단계'] || ''}`, 2000),
+      situation: cut(`고객: ${meta['고객 유형'] || ''}\n단계: ${meta['컨설팅 단계'] || ''}${meta['WHY 디깅 경로'] ? '\nWHY 디깅 경로: ' + meta['WHY 디깅 경로'].replace(/\*\*/g, '') : ''}`, 2000),
       diagnosis: cut(`${meta['결과'] ? '결과: ' + meta['결과'] + '\n' : ''}${topic}`, 2000),
       prescription: cut([dir && '[방향성]\n' + dir, core && '[코어 키워드·메시지]\n' + core, mission && '[미션]\n' + mission].filter(Boolean).join('\n\n'), 3000),
       reasoning: cut([lack && '[결핍]\n' + lack, over && '[극복]\n' + over].filter(Boolean).join('\n\n'), 2000),
@@ -139,10 +139,47 @@ export function parseCaseDoc(md, fileName) {
   return { title, participant, round, subject, meta, docTags, cards, base, ctx, md };
 }
 
+// ── 방법론 문서 ("# [커밍쏜 방법론] …") ──────────────────────────────────────
+// 케이스 파일과 달리 '## 섹션' 단위로 카드를 만든다. 표(케이스 매핑)는 카드로 만들지 않고 전문에만 남긴다.
+export function parseMethodDoc(md, fileName) {
+  const lines = md.replace(/\r/g, '').split('\n');
+  const title = (lines.find((l) => l.startsWith('# ')) || '# ' + fileName).slice(2).trim();
+  const subject = title.replace(/^\[커밍쏜 방법론\]\s*/, '').trim();
+  const meta = {};
+  for (const l of lines.slice(0, 10)) { const mm = /^- (태그|적용 단계):\s*(.+)$/.exec(l); if (mm) meta[mm[1]] = mm[2].trim(); }
+  const docTags = (meta['태그'] || '').split(/\s+/).map((t) => t.replace(/^#/, '')).filter(Boolean);
+  const docTagMapped = pickTags(docTags.join(' '), []);
+  const secs = [];
+  let cur = null;
+  for (const l of lines) {
+    const h = /^## (.+)$/.exec(l);
+    if (h) { cur = { title: h[1].trim(), body: [] }; secs.push(cur); continue; }
+    if (cur && !/^# /.test(l)) cur.body.push(l);
+  }
+  const cards = [];
+  for (const sc of secs) {
+    const text = sc.body.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+    const bodyNoTable = text.split('\n').filter((x) => !/^\|/.test(x)).join('\n').trim();
+    if (!bodyNoTable) continue;                                   // 표만 있는 섹션은 건너뜀
+    const q = (/"([^"]{8,})"/.exec(bodyNoTable) || [])[1] || '';
+    cards.push({
+      key: 'm_' + sha(sc.title).slice(0, 8),
+      summary: cut(`커밍쏜 방법론 · ${subject} — ${sc.title}`, 300),
+      situation: cut(`브랜드 로드맵 컨설팅, ${sc.title} 상황.${meta['적용 단계'] ? ' 적용 단계: ' + meta['적용 단계'] : ''}`, 2000),
+      diagnosis: '',
+      prescription: cut(bodyNoTable, 3000),
+      reasoning: '',
+      quote: cut(q, 1000),
+      tags: pickTags(sc.title + ' ' + bodyNoTable, docTagMapped),
+    });
+  }
+  return { title, participant: '', round: '', subject, meta, docTags, cards, ctx: '커밍쏜 방법론', md, isMethod: true };
+}
+
 // ── 쓰기 ──────────────────────────────────────────────────────────────────────
 async function importDoc(file, dry) {
   const md = fs.readFileSync(file, 'utf-8');
-  const doc = parseCaseDoc(md, path.basename(file));
+  const doc = /^#\s*\[커밍쏜 방법론\]/m.test(md) ? parseMethodDoc(md, path.basename(file)) : parseCaseDoc(md, path.basename(file));
   const docKey = sha(doc.title);
   console.log(`\n■ ${doc.title}`);
   console.log(`  참여자 ${doc.participant} · ${doc.round} · 카드 ${doc.cards.length}장 · 태그 ${doc.docTags.join(' ')}`);
@@ -161,7 +198,7 @@ async function importDoc(file, dry) {
       summary: c.summary, situation: c.situation, diagnosis: c.diagnosis, prescription: c.prescription, reasoning: c.reasoning, quote: c.quote,
       tags: c.tags, participants: cut(doc.ctx, 200),
       body: ['상황: ' + c.situation, '진단: ' + c.diagnosis, '처방: ' + c.prescription, '이유: ' + c.reasoning].join('\n').slice(0, 8000),
-      cohort: '', round: doc.round, director: '커밍쏜',
+      cohort: '', round: doc.round, director: '커밍쏜', kind: doc.isMethod ? 'method' : 'case',
       status: 'approved', aiApplied: true, confirmed: true,
       source: 'import', sourceDoc: doc.title, sourceKey: docKey,
       createdAt: now, embeddedAt: 0,
@@ -170,7 +207,7 @@ async function importDoc(file, dry) {
   // 문서 전문도 지식 소스로 — 요약본의 1인칭 결핍·극복·방향 문장이 통째로 검색되게.
   b.set(db.collection('kbSources').doc(`import_${docKey}`), {
     name: doc.title, type: 'consulting', category: 'branding', status: '완료',
-    link: '', memo: `PT 컨설팅 케이스 문서(커밍쏜 정리, 판단 카드 ${doc.cards.length}장으로도 등록)`,
+    link: '', memo: `${doc.isMethod ? '커밍쏜 방법론 문서' : 'PT 컨설팅 케이스 문서'}(커밍쏜 정리, 판단 카드 ${doc.cards.length}장으로도 등록)`,
     tags: doc.docTags.slice(0, 12),
     transcript: md, transcriptChars: md.length, transcriptTruncated: false,
     createdAt: now, addedAt: now, embeddedAt: 0, chunks: 0,
