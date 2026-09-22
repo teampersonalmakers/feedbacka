@@ -257,13 +257,18 @@ const EXTRACT_PATTERNS_SYSTEM = `당신은 퍼스널메이커스 팀의 분석�
 - 커밍쏜의 표현을 살리되 내부 용어(경로 1/2, 유형 A/B, 얼라인먼트)는 쓰지 않는다. 문장 안에 큰따옴표(")를 쓰지 않는다.
 출력은 JSON 배열만. [{"pattern": "원칙 한 줄", "cards": ["카드id", ...]}]`;
 // 병합 출력은 후보 번호(from)만 적게 한다 — 카드 id 를 다시 쓰게 하면 출력이 길어져 한도에서 잘린다(첫 실행이 그렇게 실패했다).
+// 병합 출력은 JSON 이 아니라 줄 형식 — 모델이 문장 안에 따옴표를 쓰면 JSON 이 깨져 항목이 통째로 버려진 적이 있다.
+// 한 줄 = 후보 번호들 | 기존 번호 | 문장.  예)  3,7,12 | 5 | 결핍은 하나로 고른다.
 const MERGE_PATTERNS_SYSTEM = `당신은 퍼스널메이커스 팀의 분석가입니다. [기존 논리 체크]와 여러 배치에서 뽑은 [패턴 후보]를 받습니다.
-1) 뜻이 같은 후보끼리 하나로 합칩니다. from 에는 합친 후보들의 번호를 전부 적습니다.
-2) 각 항목이 기존 논리 체크의 몇 번과 같은 뜻인지 표시합니다(matches: 번호, 없으면 0). 기존 것을 더 구체화하는 정도면 그 번호를 적습니다.
-3) 문장은 지침 형식 20~120자, 단정형. 내부 용어 금지. 문장 안에 큰따옴표(")를 쓰지 않는다 — 인용은 작은따옴표나 「」로.
-4) 카드 id 는 쓰지 않습니다. 후보 번호만 씁니다.
-5) 최종 항목은 최대 50개. 비슷한 것은 과감히 합칩니다.
-출력은 JSON 배열만. [{"text": "원칙 한 줄", "matches": 0, "from": [후보 번호, ...]}]`;
+1) 뜻이 같은 후보끼리 하나로 합칩니다. 합친 후보들의 번호를 전부 적습니다.
+2) 각 항목이 기존 논리 체크의 몇 번과 같은 뜻인지 표시합니다(번호, 없으면 0). 기존 것을 더 구체화하는 정도면 그 번호를 적습니다.
+3) 문장은 지침 형식 20~120자, 단정형. 내부 용어 금지. 카드 id 는 쓰지 않습니다.
+4) 최종 항목은 최대 50개. 비슷한 것은 과감히 합칩니다. 후보를 빠뜨리지 않습니다 — 모든 후보 번호가 어느 한 줄에는 들어가야 합니다.
+출력 형식: 한 줄에 항목 하나, 세 칸을 세로줄(|)로 구분. 다른 말·머리말·번호 매기기 없이 줄들만.
+후보번호들(쉼표) | 기존번호(없으면 0) | 문장
+예)
+3,7,12 | 5 | 결핍은 여러 개여도 가장 도와주고 싶은 그때의 나 하나로 고른다.
+1 | 0 | 채널 진입은 시장 크기가 아니라 상품의 명확성으로 판단한다.`;
 
 async function patternCards(db) {
   const snap = await db.collection(COL.cases).limit(1000).get();
@@ -294,22 +299,42 @@ const MERGE_CHUNK = 40;
 async function mergeRound(items, existing, KEY) {
   const user = '[기존 논리 체크]\n' + existing.map((l, i) => `${i + 1}. ${l}`).join('\n') + '\n\n[패턴 후보 ' + items.length + '개]\n' + items.map((x, i) => `${i + 1}. ${x.text} (카드 ${x.cards.length}장)`).join('\n');
   // 사고(thinking) 없이 — 사고 토큰이 max_tokens 를 같이 써서 출력이 잘린 적이 있다. 항목 40개면 출력 6000 이내.
-  const merged = await claudeJson(MERGE_PATTERNS_SYSTEM, user, KEY, 6000, { thinking: false });
-  return merged.filter((x) => x && x.text).map((x) => {
-    const from = (Array.isArray(x.from) ? x.from : []).map((n) => items[Number(n) - 1]).filter(Boolean);
-    const cards = [...new Set([...from.flatMap((c) => c.cards), ...(Array.isArray(x.cards) ? x.cards : [])].map(String))].slice(0, 120);
-    const matches = Math.max(0, Math.min(existing.length, Number(x.matches) || 0));
-    return { text: String(x.text).slice(0, 220), matches: matches || Math.max(0, ...from.map((c) => c.matches || 0)), cards };
-  });
+  const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: claudeHeaders(KEY), body: claudeBody(MERGE_PATTERNS_SYSTEM, user, { maxTokens: 6000, model: PATTERN_MODEL, thinking: false }) });
+  const d = await r.json();
+  if (!r.ok || d.error) throw new Error(d.error?.message || ('Claude ' + r.status));
+  const txt = pickText(d);
+  const out = parseMergeLines(txt, items, existing);
+  const log = { in: items.length, out: out.length, stop: d.stop_reason || '', outTokens: (d.usage && d.usage.output_tokens) || 0 };
+  if (!out.length) { const err = new Error('병합 출력에서 항목을 못 읽음' + (d.stop_reason === 'max_tokens' ? ' (max_tokens 잘림)' : '')); err.debug = Object.assign(log, { head: txt.slice(0, 600), tail: txt.slice(-300) }); throw err; }
+  out.log = log;
+  return out;
+}
+// "3,7,12 | 5 | 문장" 줄들을 읽는다. 따옴표·머리말·번호 매기기가 섞여도 줄 단위라 다른 줄에 영향이 없다.
+export function parseMergeLines(txt, items, existing) {
+  const out = [];
+  for (const raw of String(txt || '').split('\n')) {
+    const line = raw.trim().replace(/^[-*•]\s*/, '').replace(/^\d+[.)]\s+(?=[\d,\s]+\|)/, '');
+    const parts = line.split('|').map((x) => x.trim());
+    if (parts.length < 3) continue;
+    const nums = parts[0].split(/[,\s]+/).map((n) => Number(n)).filter((n) => Number.isInteger(n) && n >= 1 && n <= items.length);
+    const text = parts.slice(2).join('|').replace(/^["'「]+|["'」]+$/g, '').trim();
+    if (!nums.length || text.length < 8) continue;
+    const from = [...new Set(nums)].map((n) => items[n - 1]);
+    const cards = [...new Set(from.flatMap((c) => c.cards).map(String))].slice(0, 120);
+    const m = Number(parts[1]); const matches = Number.isInteger(m) && m >= 1 && m <= existing.length ? m : 0;
+    out.push({ text: text.slice(0, 220), matches: matches || Math.max(0, ...from.map((c) => c.matches || 0)), cards });
+  }
+  return out;
 }
 // 후보가 많으면 40개씩 1차 병합(병렬) → 결과를 모아 2차 병합. 한 번에 100여 개를 주면 출력이 한도에서 잘리고 함수 시간(120초)도 넘긴다.
-async function mergeAll(all, existing, KEY) {
+async function mergeAll(all, existing, KEY, logs = []) {
   const items = all.map((x) => ({ text: x.pattern, cards: x.cards, matches: 0 }));
-  if (items.length <= MERGE_CHUNK) return mergeRound(items, existing, KEY);
+  const round = async (its) => { const r = await mergeRound(its, existing, KEY); logs.push(r.log); return r; };
+  if (items.length <= MERGE_CHUNK) return round(items);
   const chunks = []; for (let i = 0; i < items.length; i += MERGE_CHUNK) chunks.push(items.slice(i, i + MERGE_CHUNK));
-  const firsts = (await Promise.all(chunks.map((c) => mergeRound(c, existing, KEY)))).flat();
+  const firsts = (await Promise.all(chunks.map((c) => round(c)))).flat();
   if (firsts.length <= MERGE_CHUNK) return firsts;
-  return mergeRound(firsts, existing, KEY);
+  return round(firsts);
 }
 async function patternsStep(db, KEY, { force = false, maxBatches = 2 } = {}) {
   const ref = db.collection(COL.distill).doc(PATTERN_DOC);
@@ -340,9 +365,9 @@ async function patternsStep(db, KEY, { force = false, maxBatches = 2 } = {}) {
   const g = await db.collection(COL.guidelines).where('section', '==', 'logic').limit(1).get();
   const existing = g.docs[0] ? (g.docs[0].data().body || []) : [];
   const all = Object.values(st.results).flat();
-  let merged;
-  try { merged = await mergeAll(all, existing, KEY); }
-  catch (e) { st.status = 'error'; st.error = String(e.message).slice(0, 160); st.errorDebug = e.debug || null; st.at = Date.now(); await ref.set(st); return { status: 'error', error: st.error }; }
+  let merged; const mergeLogs = [];
+  try { merged = await mergeAll(all, existing, KEY, mergeLogs); }
+  catch (e) { st.status = 'error'; st.error = String(e.message).slice(0, 160); st.errorDebug = e.debug || null; st.mergeLogs = mergeLogs; st.at = Date.now(); await ref.set(st); return { status: 'error', error: st.error }; }
   const patterns = merged.map((x) => {
     const cards = x.cards.slice(0, 120);
     const docs = [...new Set(cards.map((id) => st.cardDocs[id]).filter(Boolean))];
@@ -353,7 +378,8 @@ async function patternsStep(db, KEY, { force = false, maxBatches = 2 } = {}) {
     patterns, cardsUsed: st.cards, existingLines: existing.length, at: Date.now(), model: PATTERN_MODEL,
   });
   st.status = 'done'; st.at = Date.now(); st.candidates = patterns.length;
-  await ref.set({ status: 'done', at: st.at, total: st.total, done: st.done, cards: st.cards, candidates: patterns.length });
+  // 추출 결과(results)와 카드 출처는 남긴다 — 병합만 다시 돌릴 수 있게. 배치 카드 본문은 버린다.
+  await ref.set({ status: 'done', at: st.at, total: st.total, done: st.done, cards: st.cards, candidates: patterns.length, results: st.results, cardDocs: st.cardDocs, mergeLogs, rawCandidates: all.length });
   return { status: 'done', total: st.total, done: st.done, candidates: patterns.length, cardsUsed: st.cards };
 }
 
@@ -458,4 +484,4 @@ export default async function handler(req, res) {
 }
 
 // 테스트용 노출 (scripts/_prtest.mjs)
-export const __test = { prereviewBatch, quoteInText, quoteMatch, patternsStep };
+export const __test = { prereviewBatch, quoteInText, quoteMatch, patternsStep, parseMergeLines };
