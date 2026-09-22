@@ -906,33 +906,42 @@ document.addEventListener('drop', function(e) {
 //   2) /api/distill?prereview=1 — (커밍쏜 로그인 때만) 초안 판단 카드를 녹취와 대조해 AI 가 사전 검수한다.
 //      카드에 점수·판정·문제점이 붙는다(상태는 바꾸지 않음 — 승인은 커밍쏜만). 남은 게 없을 때까지 최대 30번 반복.
 window.addEventListener('pmfire:ready', async function() {
-  try { fetch('/api/backfill').catch(function() {}); } catch(e) {}
-  try {
-    if (!(window.PMFire && window.PMFire.isOwner && window.PMFire.isOwner())) return;
-    if (sessionStorage.getItem('pm_prereview_done')) return;   // 탭당 한 번만
-    var total = { reviewed: 0, approved: 0 };
-    for (var i = 0; i < 30; i++) {
-      var tok = await window.PMFire.idToken();
-      var r = await fetch('/api/distill?prereview=1&docs=6', { headers: { Authorization: 'Bearer ' + tok } });
-      var d = await r.json();
-      var p = d && d.prereview; if (!p) break;
-      total.reviewed += p.reviewed || 0; total.approved += p.approved || 0;
-      console.info('[PMFire] AI 사전 검수:', JSON.stringify(p));
-      if (!p.docs || p.remaining <= 0) break;
-      await new Promise(function(ok) { setTimeout(ok, 1500); });
-    }
-    sessionStorage.setItem('pm_prereview_done', '1');
-    if (total.approved) { var tok2 = await window.PMFire.idToken(); fetch('/api/distill?backfill=1', { headers: { Authorization: 'Bearer ' + tok2 } }).catch(function() {}); }
-    // 3) 녹취 공통 판단 패턴 추출 — 하루 한 번(서버가 24시간 내면 건너뜀). 결과는 설정 › 논리 체크 후보에 "후보"로만.
-    for (var j = 0; j < 12; j++) {
-      var tok3 = await window.PMFire.idToken();
-      var rp = await fetch('/api/distill?patterns=1&batches=2', { headers: { Authorization: 'Bearer ' + tok3 } });
-      var dp = await rp.json(); var pp = dp && dp.patterns; if (!pp) break;
-      console.info('[PMFire] 패턴 추출:', JSON.stringify(pp));
-      if (pp.status !== 'running') break;
-      await new Promise(function(ok) { setTimeout(ok, 1500); });
-    }
-  } catch(e) { console.warn('[PMFire] 사전 검수 중단(무시):', e && e.message); }
+  try { fetch('/api/backfill', { cache: 'no-store' }).catch(function() {}); } catch(e) {}
+  if (!(window.PMFire && window.PMFire.isOwner && window.PMFire.isOwner())) return;
+  var auth = async function() { return { headers: { Authorization: 'Bearer ' + (await window.PMFire.idToken()) }, cache: 'no-store' }; };
+  var sleep = function(ms) { return new Promise(function(ok) { setTimeout(ok, ms); }); };
+  // 2) 사전 검수 — 탭당 한 번. 남은 게 없을 때까지 최대 30번.
+  (async function() {
+    if (sessionStorage.getItem('pm_prereview_done')) return;
+    try {
+      var total = { reviewed: 0, approved: 0 };
+      for (var i = 0; i < 30; i++) {
+        var r = await fetch('/api/distill?prereview=1&docs=6', await auth());
+        var d = await r.json(); var p = d && d.prereview; if (!p) break;
+        total.reviewed += p.reviewed || 0; total.approved += p.approved || 0;
+        console.info('[PMFire] AI 사전 검수:', JSON.stringify(p));
+        if (!p.docs || p.remaining <= 0) break;
+        await sleep(1500);
+      }
+      sessionStorage.setItem('pm_prereview_done', '1');
+      if (total.approved) fetch('/api/distill?backfill=1', await auth()).catch(function() {});
+    } catch(e) { console.warn('[PMFire] 사전 검수 중단(무시):', e && e.message); }
+  })();
+  // 3) 녹취 공통 판단 패턴 추출 — 사전 검수와 별개로 돈다. 하루 한 번(서버가 24시간 내면 건너뜀).
+  //    결과는 설정 › 논리 체크 후보에 "후보"로만 들어간다.
+  (async function() {
+    if (sessionStorage.getItem('pm_patterns_done')) return;
+    try {
+      for (var j = 0; j < 12; j++) {
+        var rp = await fetch('/api/distill?patterns=1&batches=2', await auth());
+        var dp = await rp.json(); var pp = dp && dp.patterns; if (!pp) break;
+        console.info('[PMFire] 패턴 추출:', JSON.stringify(pp));
+        if (pp.status !== 'running') break;
+        await sleep(1500);
+      }
+      sessionStorage.setItem('pm_patterns_done', '1');
+    } catch(e) { console.warn('[PMFire] 패턴 추출 중단(무시):', e && e.message); }
+  })();
 });
 // PMFire 가 없으면(설정 누락/네트워크 차단) 아래는 전부 no-op 이고 기존 동작 그대로다.
 (function() {
