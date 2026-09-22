@@ -282,8 +282,34 @@ async function claudeJson(system, user, KEY, maxTokens, opts = {}) {
   const m = txt.match(/\[[\s\S]*\]/);
   let arr = m ? parseCards(m[0]) : null;
   if (!Array.isArray(arr)) { const o = (txt.match(/\{[\s\S]*\}/) || [])[0]; const obj = o ? parseCards(o) : null; if (obj && Array.isArray(obj.patterns)) arr = obj.patterns; }
-  if (!Array.isArray(arr)) throw new Error(d.stop_reason === 'max_tokens' ? '출력 한도 초과(max_tokens) — JSON 이 잘림' : 'JSON 배열 아님');
+  if (!Array.isArray(arr)) {
+    const err = new Error(d.stop_reason === 'max_tokens' ? '출력 한도 초과(max_tokens) — JSON 이 잘림' : 'JSON 배열 아님');
+    err.debug = { stop: d.stop_reason, out: (d.usage && d.usage.output_tokens) || 0, head: txt.slice(0, 600), tail: txt.slice(-300) };
+    throw err;
+  }
   return arr;
+}
+// 병합 한 라운드: 항목(text, cards)들을 기존 논리 체크와 대조해 합친다. 모델은 번호만 답하고 카드 합집합은 코드가.
+const MERGE_CHUNK = 40;
+async function mergeRound(items, existing, KEY) {
+  const user = '[기존 논리 체크]\n' + existing.map((l, i) => `${i + 1}. ${l}`).join('\n') + '\n\n[패턴 후보 ' + items.length + '개]\n' + items.map((x, i) => `${i + 1}. ${x.text} (카드 ${x.cards.length}장)`).join('\n');
+  // 사고(thinking) 없이 — 사고 토큰이 max_tokens 를 같이 써서 출력이 잘린 적이 있다. 항목 40개면 출력 6000 이내.
+  const merged = await claudeJson(MERGE_PATTERNS_SYSTEM, user, KEY, 6000, { thinking: false });
+  return merged.filter((x) => x && x.text).map((x) => {
+    const from = (Array.isArray(x.from) ? x.from : []).map((n) => items[Number(n) - 1]).filter(Boolean);
+    const cards = [...new Set([...from.flatMap((c) => c.cards), ...(Array.isArray(x.cards) ? x.cards : [])].map(String))].slice(0, 120);
+    const matches = Math.max(0, Math.min(existing.length, Number(x.matches) || 0));
+    return { text: String(x.text).slice(0, 220), matches: matches || Math.max(0, ...from.map((c) => c.matches || 0)), cards };
+  });
+}
+// 후보가 많으면 40개씩 1차 병합(병렬) → 결과를 모아 2차 병합. 한 번에 100여 개를 주면 출력이 한도에서 잘리고 함수 시간(120초)도 넘긴다.
+async function mergeAll(all, existing, KEY) {
+  const items = all.map((x) => ({ text: x.pattern, cards: x.cards, matches: 0 }));
+  if (items.length <= MERGE_CHUNK) return mergeRound(items, existing, KEY);
+  const chunks = []; for (let i = 0; i < items.length; i += MERGE_CHUNK) chunks.push(items.slice(i, i + MERGE_CHUNK));
+  const firsts = (await Promise.all(chunks.map((c) => mergeRound(c, existing, KEY)))).flat();
+  if (firsts.length <= MERGE_CHUNK) return firsts;
+  return mergeRound(firsts, existing, KEY);
 }
 async function patternsStep(db, KEY, { force = false, maxBatches = 2 } = {}) {
   const ref = db.collection(COL.distill).doc(PATTERN_DOC);
@@ -314,19 +340,13 @@ async function patternsStep(db, KEY, { force = false, maxBatches = 2 } = {}) {
   const g = await db.collection(COL.guidelines).where('section', '==', 'logic').limit(1).get();
   const existing = g.docs[0] ? (g.docs[0].data().body || []) : [];
   const all = Object.values(st.results).flat();
-  // 후보에 카드 수(출처 수)만 보여주고 id 는 감춘다 — 모델은 번호로만 답하고, 카드 합집합은 코드가 만든다.
-  const user = '[기존 논리 체크]\n' + existing.map((l, i) => `${i + 1}. ${l}`).join('\n') + '\n\n[패턴 후보 ' + all.length + '개]\n' + all.map((x, i) => `${i + 1}. ${x.pattern} (카드 ${x.cards.length}장)`).join('\n');
   let merged;
-  // 병합은 사고(thinking) 없이 — 사고 토큰이 max_tokens 를 같이 쓰기 때문에 후보 100여 개에서 출력이 잘렸다(3차 실패 원인).
-  try { merged = await claudeJson(MERGE_PATTERNS_SYSTEM, user, KEY, 16000, { thinking: false }); }
-  catch (e) { st.status = 'error'; st.error = String(e.message).slice(0, 160); st.at = Date.now(); await ref.set(st); return { status: 'error', error: st.error }; }
-  const patterns = merged.filter((x) => x && x.text).map((x) => {
-    const from = (Array.isArray(x.from) ? x.from : []).map((n) => all[Number(n) - 1]).filter(Boolean);
-    const fromCards = from.flatMap((c) => c.cards);
-    // 모델이 예전 형식(cards)으로 답해도 받는다.
-    const cards = [...new Set([...fromCards, ...(Array.isArray(x.cards) ? x.cards : [])].map(String))].slice(0, 80);
+  try { merged = await mergeAll(all, existing, KEY); }
+  catch (e) { st.status = 'error'; st.error = String(e.message).slice(0, 160); st.errorDebug = e.debug || null; st.at = Date.now(); await ref.set(st); return { status: 'error', error: st.error }; }
+  const patterns = merged.map((x) => {
+    const cards = x.cards.slice(0, 120);
     const docs = [...new Set(cards.map((id) => st.cardDocs[id]).filter(Boolean))];
-    return { text: String(x.text).slice(0, 220), matches: Math.max(0, Math.min(existing.length, Number(x.matches) || 0)), cards, docs, count: docs.length || cards.length, accepted: false };
+    return { text: x.text, matches: x.matches, cards, docs, count: docs.length || cards.length, accepted: false };
   }).sort((a, b) => b.count - a.count);
   await db.collection(COL.guidelines).doc('logic_candidates').set({
     section: 'logicCandidates', name: '논리 체크 후보(녹취 공통 패턴)', body: [], active: false, order: 26,
