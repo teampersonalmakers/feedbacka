@@ -27,6 +27,9 @@ const TIERS = [
 ];
 const PER_TIER = 3;
 const CONTENT_N = 9;
+// 콘텐츠 레퍼런스 기준(커밍쏜): 구독자 대비 조회수 5배 이상 + 조회 1만 이상. 미달이면 채우지 않고 부족하다고 말한다.
+export const MIN_RATIO = 5;
+export const MIN_VIEWS = 10000;
 
 // "레퍼런스 채널 추천해줘 / 벤치마킹 채널 찾아줘 / 참고할 채널 알려줘" 류의 요청인가
 const REF_RE = /(레퍼런스|벤치마킹|벤치마크|참고(?:할|할\s*만한)?|롤모델)\s*(?:유튜브\s*)?채널[^\n]{0,20}(추천|찾|알려|골라|뽑|리서치|서치|검색)|채널\s*(추천|리서치)|(추천|찾)[^\n]{0,8}(레퍼런스|벤치마킹)\s*채널/;
@@ -172,11 +175,13 @@ async function runResearch(plan, auth) {
     return { key: t.key, label: t.label, channels: list };
   });
 
-  // 발견 확률 높은 콘텐츠: 구독자 대비 조회수. 채널당 2편, 최근 24개월 우선, 조회 2천 이상.
+  // 발견 확률 높은 콘텐츠: 구독자 대비 조회수 5배 이상 + 조회 1만 이상 (36개월 내, 채널당 2편).
+  // 구독자가 아주 적은 채널은 500명으로 잡아 비율이 뻥튀기되지 않게 한다.
   const seenPerChan = {};
   const contents = videos
-    .filter((v) => channels[v.channelId] && channels[v.channelId].subscribers >= 0 && v.views >= 2000 && monthsAgo(v.publishedAt) <= 36)
+    .filter((v) => channels[v.channelId] && channels[v.channelId].subscribers >= 0 && v.views >= MIN_VIEWS && monthsAgo(v.publishedAt) <= 36)
     .map((v) => Object.assign({}, v, { subscribers: channels[v.channelId].subscribers, ratio: v.views / Math.max(channels[v.channelId].subscribers, 500) }))
+    .filter((v) => v.ratio >= MIN_RATIO)
     .sort((a, b) => b.ratio - a.ratio)
     .filter((v) => { seenPerChan[v.channelId] = (seenPerChan[v.channelId] || 0) + 1; return seenPerChan[v.channelId] <= 2; })
     .slice(0, CONTENT_N)
@@ -241,7 +246,8 @@ export function formatReferenceBlock(r, todayStr) {
       if (c.topicVideos && c.topicVideos.length) L.push('   주제 영상: ' + c.topicVideos.map((v) => `"${v.title}" (${fmtKo(v.views)}, ${v.publishedAt})`).join(' / '));
     });
   }
-  L.push('■ 발견될 확률이 높은 콘텐츠 — 구독자 대비 조회수 상위 (썸네일 이미지 #번호와 대응)');
+  L.push(`■ 발견될 확률이 높은 콘텐츠 — 기준: 구독자 대비 조회수 ${MIN_RATIO}배 이상 + 조회 ${fmtKo(MIN_VIEWS)} 이상 (${r.contents.length}개${r.contents.length < CONTENT_N ? ' — 기준을 넘는 영상이 이만큼만 발견됨' : ''}, 썸네일 이미지 #번호와 대응)`);
+  if (!r.contents.length) L.push('(기준을 넘는 영상 없음 — 지어내지 말고 없다고 말할 것)');
   r.contents.forEach((c, i) => {
     const tierLabel = (TIERS.find((t) => t.key === c.tier) || {}).label || '';
     L.push(`#${i + 1} [${c.channelTitle} · 구독 ${fmtKo(c.subscribers)}${tierLabel ? ' · ' + tierLabel : ''}] "${c.title}" — 조회 ${fmtKo(c.views)} (구독자의 ${c.ratio}배) · ${c.publishedAt} · ${c.sec <= 60 ? '숏폼' : Math.round(c.sec / 60) + '분'} · ${c.url}`);
@@ -264,6 +270,6 @@ export const REFERENCE_GUIDE = `[레퍼런스 채널 추천 지침]
 디렉터가 참여자에게 추천할 레퍼런스 채널을 요청했고, user 턴에 '레퍼런스 채널 리서치' 블록과 썸네일 이미지가 있다. 아래 순서로 답한다.
 1) 주제 확인 한 줄: 무엇을 기준으로 찾았는지(주제·타겟).
 2) 채널 9개를 구간별로(10만 이상 / 1만~10만 / 1만 이하). 각 채널마다: 이름(링크 가능하면 핸들) · 구독자 · 이 채널에서 '무엇을' 배울지 한 줄(주제 잡는 법·페르소나·구조·업로드 패턴 중 하나로 구체적으로). 커밍쏜 기준으로 1만~10만과 1만 이하 구간이 참여자가 실제로 따라할 모델이고, 10만 이상은 '왜 되는지'를 뽑는 용도라고 구분해 말한다. 구간에 채널이 부족하면 부족하다고 말하고 채우지 않는다.
-3) 발견될 확률이 높은 콘텐츠: 블록의 #번호 순서대로 최대 9개. 각각 소재(무슨 이야기인지) · 제목의 구조(어떤 훅인지: 숫자·역설·경고·질문·당사자 고백 등) · 썸네일 구성(첨부 이미지를 보고: 인물·표정·텍스트 문구·색·배치) · 왜 구독자 대비 조회가 높은지 한 줄. 마지막에 참여자 주제로 바꾼 제목 예시 1개.
+3) 발견될 확률이 높은 콘텐츠: 블록의 #번호 순서대로(기준: 구독자 대비 조회수 5배 이상 + 조회 1만 이상). 블록에 있는 개수만큼만 — 9개가 안 되면 "기준을 넘는 영상은 n개"라고 말하고 채우지 않는다. 각각 소재(무슨 이야기인지) · 제목의 구조(어떤 훅인지: 숫자·역설·경고·질문·당사자 고백 등) · 썸네일 구성(첨부 이미지를 보고: 인물·표정·텍스트 문구·색·배치) · 왜 구독자 대비 조회가 높은지 한 줄. 마지막에 참여자 주제로 바꾼 제목 예시 1개.
 4) 마무리: 참여자가 이번 주에 볼 채널 3개와 만들어볼 소재 3개를 고른다(커밍쏜 기준: 소재는 대중성, 차별화는 메시지·페르소나).
 숫자·채널·영상은 블록에 있는 것만 쓴다. 블록에 없는 채널을 기억으로 추가하지 않는다. 이미지가 없는 영상의 썸네일은 설명하지 않는다.`;

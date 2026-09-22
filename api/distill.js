@@ -118,31 +118,42 @@ export async function distillOne(doc, key) {
 //   코드 검사: 인용(quote)이 녹취에 실제로 있는지 (공백·문장부호 무시, 10자 조각 60% 이상 일치)
 //   모델 검사: 커밍쏜이 실제로 한 판단인지(수강생 말이 아닌지), 처방·이유가 녹취에 근거하는지,
 //             다른 수강생에게도 재사용할 만큼 일반적인지 → 1~5점 + approve/fix/reject
-//   승인 후보(eligible) = 점수 ≥ 4 + verdict approve + 인용 확인(코드 또는 모델) + 처방 있음.
+//   승인 후보(eligible) = 점수 ≥ 4 + verdict approve + 인용 확인(정확 일치, 또는 모델 확인+부분 일치) + 근거 발췌가 녹취에 실재 + 처방 있음.
 //   기본은 점수·판정만 붙이고 상태는 그대로 둔다. 커밍쏜이 기준을 확인한 뒤 PREREVIEW_AUTO_APPROVE=on
 //   으로 켜면 승인 후보만 자동 승인된다. 자동 반려는 어떤 경우에도 하지 않는다.
 const REVIEW_MODEL = 'claude-sonnet-5';
 const REVIEW_SYSTEM = `당신은 퍼스널메이커스 팀의 검수자입니다. 녹취 원문과, 그 녹취에서 AI가 뽑은 "판단 카드" 초안들을 받습니다.
-각 카드가 커밍쏜(코치)의 실제 판단을 정확히 담았는지 검사합니다.
+각 카드가 커밍쏜(코치)의 실제 판단을 정확히 담았는지, 녹취를 근거로 엄격하게 검사합니다. 의심스러우면 점수를 낮춥니다.
 
-검사 기준
-1) 화자: 카드의 진단·처방이 커밍쏜의 말인가. 수강생·디렉터의 말을 커밍쏜 판단으로 쓴 카드는 reject.
-2) 근거: 처방·이유가 녹취에 실제로 있는 내용인가. 녹취에 없는 내용을 지어냈으면 reject, 일부 과장·누락이면 fix.
-3) 인용: quote 가 녹취 원문과 뜻이 같은가(표현 차이는 허용). 없는 말이면 quoteOk false.
-4) 재사용성: 다른 수강생의 비슷한 상황에도 쓸 수 있는 판단 기준이 담겼는가. 그 수강생만의 잡담·일정 얘기면 reject.
+검사 기준 (모두 통과해야 5점)
+1) 화자: 진단·처방이 커밍쏜의 말인가. 수강생·디렉터·다른 참석자의 말을 커밍쏜 판단으로 쓴 카드는 reject.
+2) 근거: 처방·이유가 녹취에 실제로 있는 내용인가. 녹취에 없는 내용을 보탰으면 reject, 일부 과장·누락·순서 왜곡이면 fix.
+3) 상황 일치: situation 이 그 수강생의 실제 상황(주제·단계·고민)과 맞는가. 다른 수강생 상황과 섞였으면 reject.
+4) 처방의 성격: 커밍쏜이 실제로 "하라"고 한 것인가, 아니면 지나가며 언급만 한 것을 처방으로 격상했는가. 후자면 fix.
+5) 인용: quote 가 녹취 원문과 뜻이 같은가(표현 차이 허용). 녹취에 없는 말이면 quoteOk false.
+6) 요약 일치: summary 가 진단·처방 내용과 어긋나지 않는가.
+7) 재사용성: 다른 수강생의 비슷한 상황에도 쓸 수 있는 판단 기준인가. 그 수강생만의 잡담·일정·인사면 reject.
 
-점수: 5 정확하고 재사용 가능 / 4 사소한 표현 차이 / 3 일부 보완 필요 / 2 근거 약함 / 1 틀림.
-출력은 JSON 배열만. [{"i": 카드번호, "score": 1-5, "verdict": "approve"|"fix"|"reject", "quoteOk": true|false, "issue": "문제 한 줄(없으면 빈 문자열)"}]`;
+각 카드마다 evidence 에 녹취 원문에서 진단이나 처방을 직접 뒷받침하는 문장을 그대로 1~2문장 복사한다(다듬지 말 것, 없으면 빈 문자열). 이 발췌가 실제로 녹취에 있는지 코드가 다시 확인한다.
 
+점수: 5 정확하고 재사용 가능 / 4 사소한 표현 차이 / 3 일부 보완 필요 / 2 근거 약함 / 1 틀림 또는 화자 오류.
+출력은 JSON 배열만. [{"i": 카드번호, "score": 1-5, "verdict": "approve"|"fix"|"reject", "quoteOk": true|false, "evidence": "녹취 원문 발췌", "issue": "문제 한 줄(없으면 빈 문자열)"}]`;
+
+// 인용 대조 — 공백·문장부호를 걷어내고 10자 조각이 녹취에 얼마나 있는지 본다.
+//   0.9 이상 = 정확 일치(exact)  → 인용 확인
+//   0.6~0.9  = 부분 일치(partial) → 조사·어미 차이 수준. 확인으로 치지 않고 표시만 한다.
+//   0.6 미만 = 없음(none)
 const normQ = (t) => String(t || '').toLowerCase().replace(/[\s"'“”‘’.,!?~…()\[\]·\-]/g, '');
-function quoteInText(quote, text) {
+function quoteMatch(quote, text) {
   const q = normQ(quote), t = normQ(text);
-  if (q.length < 8) return false;
-  if (t.includes(q)) return true;
+  if (q.length < 8) return { level: 'none', ratio: 0 };
+  if (t.includes(q)) return { level: 'exact', ratio: 1 };
   const n = 10; let hit = 0, tot = 0;
   for (let i = 0; i + n <= q.length; i += 3) { tot++; if (t.includes(q.slice(i, i + n))) hit++; }
-  return tot > 0 && hit / tot >= 0.6;
+  const ratio = tot ? hit / tot : 0;
+  return { level: ratio >= 0.9 ? 'exact' : ratio >= 0.6 ? 'partial' : 'none', ratio: Math.round(ratio * 100) / 100 };
 }
+function quoteInText(quote, text) { return quoteMatch(quote, text).level === 'exact'; }
 
 async function prereviewBatch(db, KEY, maxDocs = 6) {
   const targets = loadTargets();
@@ -160,7 +171,7 @@ async function prereviewBatch(db, KEY, maxDocs = 6) {
     try {
       const r = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST', headers: claudeHeaders(KEY),
-        body: claudeBody(REVIEW_SYSTEM, user, { maxTokens: 4000, effort: 'low', model: REVIEW_MODEL }),
+        body: claudeBody(REVIEW_SYSTEM, user, { maxTokens: 6000, effort: 'medium', model: REVIEW_MODEL }),
       });
       const d = await r.json();
       if (!r.ok || d.error) throw new Error(d.error?.message || ('Claude ' + r.status));
@@ -173,14 +184,19 @@ async function prereviewBatch(db, KEY, maxDocs = 6) {
         const v = arr.find((x) => x && Number(x.i) === i) || {};
         const score = Math.max(1, Math.min(5, Number(v.score) || 0));
         const verdict = ['approve', 'fix', 'reject'].includes(v.verdict) ? v.verdict : 'fix';
-        const quoteCode = quoteInText(c.quote, t.text);
-        const quoteOk = quoteCode || v.quoteOk === true;
+        const qm = quoteMatch(c.quote, t.text);
+        const quoteCode = qm.level === 'exact';
+        // 근거 발췌(모델이 녹취에서 복사한 문장)가 실제로 녹취에 있는지 — 모델 말만 믿지 않는다.
+        const em = quoteMatch(String(v.evidence || ''), t.text);
+        const evidenceFound = em.level === 'exact';
+        // 인용 확인 = 코드로 정확 일치이거나, 모델이 뜻이 같다고 했고 코드로도 부분 일치 이상일 때
+        const quoteOk = quoteCode || (v.quoteOk === true && qm.level === 'partial');
         // 자동 승인은 커밍쏜이 검수 기준을 확인하고 켜기 전까지 꺼 둔다(PREREVIEW_AUTO_APPROVE=on).
         // 그전까지는 점수·판정·문제점만 카드에 붙이고 상태(초안)는 건드리지 않는다.
         const autoOn = String(process.env.PREREVIEW_AUTO_APPROVE || 'off').toLowerCase() === 'on';
-        const eligible = score >= 4 && verdict === 'approve' && quoteOk && !!c.prescription;
+        const eligible = score >= 4 && verdict === 'approve' && quoteOk && evidenceFound && !!c.prescription;
         const auto = autoOn && eligible;
-        const review = { score, verdict, quoteOk, quoteCode, issue: String(v.issue || '').slice(0, 300), model: d.model || REVIEW_MODEL, at: now, auto, eligible };
+        const review = { score, verdict, quoteOk, quoteCode, quoteLevel: qm.level, quoteRatio: qm.ratio, evidence: String(v.evidence || '').slice(0, 400), evidenceFound, issue: String(v.issue || '').slice(0, 300), model: d.model || REVIEW_MODEL, at: now, auto, eligible };
         const patch = { review };
         if (auto) Object.assign(patch, { status: 'approved', aiApplied: true, confirmed: false, approvedBy: 'ai', approvedAt: now, embeddedAt: 0 });
         wb.set(c.ref, patch, { merge: true });
@@ -279,4 +295,4 @@ export default async function handler(req, res) {
 }
 
 // 테스트용 노출 (scripts/_prtest.mjs)
-export const __test = { prereviewBatch, quoteInText };
+export const __test = { prereviewBatch, quoteInText, quoteMatch };

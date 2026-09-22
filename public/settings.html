@@ -388,7 +388,10 @@ function weak(c) { return c.status === 'draft' && (!c.quote || !c.prescription |
 // AI 사전 검수 결과 — 녹취 원문과 대조한 점수. 자동 승인된 카드는 파란 표시(틀리면 반려하면 됨).
 function reviewPill(c) {
   var r = c.review; if (!r || !r.score) return '';
-  var tip = 'AI 사전 검수 ' + r.score + '/5 · ' + (r.verdict === 'approve' ? '승인 추천' : r.verdict === 'reject' ? '반려 추천' : '보완 필요') + (r.quoteOk ? ' · 인용이 녹취에 있음' : ' · 인용 미확인') + (r.issue ? '\n' + r.issue : '') + '\n(기준: 커밍쏜 발화인가 · 녹취에 근거하는가 · 인용이 실제 있는가 · 재사용 가능한가. 상태는 커밍쏜만 바꿉니다)';
+  var tip = 'AI 사전 검수 ' + r.score + '/5 · ' + (r.verdict === 'approve' ? '승인 추천' : r.verdict === 'reject' ? '반려 추천' : '보완 필요') +
+    (r.quoteLevel === 'exact' ? ' · 인용 정확 일치' : r.quoteLevel === 'partial' ? ' · 인용 부분 일치' + (r.quoteOk ? '(뜻 동일)' : '') : ' · 인용 없음') +
+    (r.evidenceFound ? ' · 근거 발췌 실재' : r.evidence ? ' · 근거 발췌 미확인' : '') + (r.issue ? '\n' + r.issue : '') + (r.evidence ? '\n근거: ' + r.evidence.slice(0, 160) : '') +
+    '\n(기준 7가지: 화자·근거·상황 일치·처방 성격·인용·요약 일치·재사용성. 상태는 커밍쏜만 바꿉니다)';
   if (c.approvedBy === 'ai') return '<span class="pill" style="background:var(--accent-soft);color:var(--accent);font-size:10px;padding:2px 6px;margin-right:6px" title="' + esc(tip) + '\n근거가 확인돼 자동 승인됐습니다. 커밍쏜 판단과 다르면 열어서 반려하세요">AI 자동 승인 ' + r.score + '/5</span>';
   var col = r.verdict === 'reject' ? 'danger' : (r.score >= 4 ? 'ok' : 'warn');
   return '<span class="pill" style="background:var(--' + col + '-soft);color:var(--' + col + ');font-size:10px;padding:2px 6px;margin-right:6px" title="' + esc(tip) + '">AI 검수 ' + r.score + '/5</span>';
