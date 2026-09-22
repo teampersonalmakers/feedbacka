@@ -411,6 +411,10 @@ function gateFatal(detail) {
         return ref.id;
       },
       async deleteGuideline(id) { await F.deleteDoc(F.doc(db, 'guidelines', id)); },
+      // 논리 체크 후보(녹취 공통 패턴) — 커밍쏜이 채택/보류 표시만 바꾼다. 문서는 서버(/api/distill?patterns=1)가 만든다.
+      async saveLogicCandidates(patterns) {
+        await F.setDoc(F.doc(db, 'guidelines', 'logic_candidates'), { section: 'logicCandidates', body: [], active: false, patterns: (patterns || []).slice(0, 200), updatedAt: Date.now(), updatedBy: user.email }, { merge: true });
+      },
 
       // ── 디렉팅 사례 (설정 페이지) — aiApplied 가 켜진 것만 AI 가 참고한다. ──
       async listCases() {

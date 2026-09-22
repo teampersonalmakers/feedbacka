@@ -218,6 +218,93 @@ async function prereviewBatch(db, KEY, maxDocs = 6) {
   return out;
 }
 
+// ─── 공통 판단 패턴 추출 ─────────────────────────────────────────────────────
+// 승인 카드 + 사전 검수 4점 이상 초안 카드를 묶어 읽혀, 녹취 여러 편에서 반복되는 커밍쏜의
+// 판단 원칙을 뽑는다. 결과는 guidelines/logic_candidates 에 "후보"로만 저장되고, 커밍쏜이
+// 설정 화면에서 체크한 것만 논리 체크에 들어간다. 자동 반영은 없다.
+// 50장씩 배치로 Sonnet 에 보내고(호출당 2배치), 다 끝나면 기존 논리 체크 21줄과 합쳐 정리한다.
+const PATTERN_MODEL = 'claude-sonnet-5';
+const PATTERN_BATCH = 50;
+const PATTERN_MAX_CARDS = 400;
+const PATTERN_DOC = '_patterns';
+const EXTRACT_PATTERNS_SYSTEM = `당신은 퍼스널메이커스 팀의 분석가입니다. 커밍쏜(코치)의 컨설팅에서 나온 판단 카드 묶음을 받습니다.
+여러 카드에서 반복되는 "커밍쏜의 판단 원칙"을 뽑습니다. 원칙은 지침 문장 형식(20~120자, 단정형)으로 씁니다.
+- 그 수강생만의 사정이 아니라 다른 수강생에게도 적용되는 판단 기준만.
+- 카드 2장 이상에서 반복되는 것을 우선. 1장뿐이어도 분명한 원칙이면 넣되 cards 에 그 1장만.
+- 순서·타겟·결핍·코어 키워드·메시지·콘텐츠·수익화·멘탈 등 주제를 가리지 않는다.
+- 커밍쏜의 표현을 살리되 내부 용어(경로 1/2, 유형 A/B, 얼라인먼트)는 쓰지 않는다.
+출력은 JSON 배열만. [{"pattern": "원칙 한 줄", "cards": ["카드id", ...]}]`;
+const MERGE_PATTERNS_SYSTEM = `당신은 퍼스널메이커스 팀의 분석가입니다. [기존 논리 체크]와 여러 배치에서 뽑은 [패턴 후보]를 받습니다.
+1) 뜻이 같은 후보끼리 하나로 합칩니다(cards 는 합집합).
+2) 각 후보가 기존 논리 체크의 몇 번과 같은 뜻인지 표시합니다(matches: 번호, 없으면 0). 기존 것을 더 구체화하는 정도면 그 번호를 적습니다.
+3) 문장은 지침 형식 20~120자, 단정형. 내부 용어 금지.
+출력은 JSON 배열만. [{"text": "원칙 한 줄", "matches": 0, "cards": ["카드id", ...]}]`;
+
+async function patternCards(db) {
+  const snap = await db.collection(COL.cases).limit(1000).get();
+  const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+    .filter((c) => c.aiApplied || (c.status === 'draft' && c.review && Number(c.review.score) >= 4))
+    .filter((c) => c.summary && (c.prescription || c.body))
+    .sort((a, b) => (b.aiApplied ? 1 : 0) - (a.aiApplied ? 1 : 0) || ((b.review && b.review.score) || 0) - ((a.review && a.review.score) || 0))
+    .slice(0, PATTERN_MAX_CARDS);
+  return rows.map((c) => ({ id: c.id, summary: String(c.summary).slice(0, 120), diagnosis: String(c.diagnosis || '').slice(0, 220), prescription: String(c.prescription || c.body || '').slice(0, 320), doc: String(c.sourceDoc || c.participants || '').slice(0, 80), cohort: c.cohort || '' }));
+}
+async function claudeJson(system, user, KEY, maxTokens) {
+  const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: claudeHeaders(KEY), body: claudeBody(system, user, { maxTokens, effort: 'medium', model: PATTERN_MODEL }) });
+  const d = await r.json();
+  if (!r.ok || d.error) throw new Error(d.error?.message || ('Claude ' + r.status));
+  const m = pickText(d).match(/\[[\s\S]*\]/);
+  const arr = m ? parseCards(m[0]) : null;
+  if (!Array.isArray(arr)) throw new Error('JSON 배열 아님');
+  return arr;
+}
+async function patternsStep(db, KEY, { force = false, maxBatches = 2 } = {}) {
+  const ref = db.collection(COL.distill).doc(PATTERN_DOC);
+  let st = (await ref.get()).data() || null;
+  if (st && st.status === 'done' && !force && Date.now() - (st.at || 0) < 24 * 3600 * 1000) return { status: 'done', skipped: true, at: st.at, candidates: st.candidates || 0 };
+  if (!st || st.status === 'done' || force) {
+    const cards = await patternCards(db);
+    if (!cards.length) return { status: 'empty', total: 0 };
+    const batches = []; for (let i = 0; i < cards.length; i += PATTERN_BATCH) batches.push(cards.slice(i, i + PATTERN_BATCH));
+    st = { status: 'running', startedAt: Date.now(), at: Date.now(), total: batches.length, done: 0, cards: cards.length, results: {}, cardDocs: Object.fromEntries(cards.map((c) => [c.id, c.doc])), batchCards: Object.fromEntries(batches.map((b, i) => [i, b])) };
+    await ref.set(st);
+  }
+  let processed = 0, errors = 0;
+  for (let i = 0; i < st.total && processed < maxBatches; i++) {
+    if (st.results[i]) continue;
+    const b = st.batchCards[i];
+    const user = '[판단 카드 ' + b.length + '장]\n' + b.map((c) => `#${c.id}\n요약: ${c.summary}\n진단: ${c.diagnosis}\n처방: ${c.prescription}\n출처: ${c.doc}${c.cohort ? ' (' + c.cohort + ')' : ''}`).join('\n\n');
+    try {
+      const arr = await claudeJson(EXTRACT_PATTERNS_SYSTEM, user, KEY, 6000);
+      st.results[i] = arr.filter((x) => x && x.pattern).map((x) => ({ pattern: String(x.pattern).slice(0, 200), cards: (Array.isArray(x.cards) ? x.cards : []).map(String).slice(0, 60) }));
+    } catch (e) { errors++; st.results[i] = []; st['error_' + i] = String(e.message).slice(0, 160); console.warn('[patterns] 배치 실패', i, e.message.slice(0, 100)); }
+    st.done = Object.keys(st.results).length; st.at = Date.now(); processed++;
+    await ref.set(st);
+  }
+  if (st.done < st.total) return { status: 'running', total: st.total, done: st.done, remaining: st.total - st.done, errors };
+
+  // 병합: 기존 논리 체크와 대조
+  const g = await db.collection(COL.guidelines).where('section', '==', 'logic').limit(1).get();
+  const existing = g.docs[0] ? (g.docs[0].data().body || []) : [];
+  const all = Object.values(st.results).flat();
+  const user = '[기존 논리 체크]\n' + existing.map((l, i) => `${i + 1}. ${l}`).join('\n') + '\n\n[패턴 후보 ' + all.length + '개]\n' + all.map((x, i) => `${i + 1}. ${x.pattern} [cards: ${x.cards.join(', ')}]`).join('\n');
+  let merged;
+  try { merged = await claudeJson(MERGE_PATTERNS_SYSTEM, user, KEY, 8000); }
+  catch (e) { st.status = 'error'; st.error = String(e.message).slice(0, 160); await ref.set(st); return { status: 'error', error: st.error }; }
+  const patterns = merged.filter((x) => x && x.text).map((x) => {
+    const cards = [...new Set((Array.isArray(x.cards) ? x.cards : []).map(String))].slice(0, 80);
+    const docs = [...new Set(cards.map((id) => st.cardDocs[id]).filter(Boolean))];
+    return { text: String(x.text).slice(0, 220), matches: Math.max(0, Math.min(existing.length, Number(x.matches) || 0)), cards, docs, count: docs.length || cards.length, accepted: false };
+  }).sort((a, b) => b.count - a.count);
+  await db.collection(COL.guidelines).doc('logic_candidates').set({
+    section: 'logicCandidates', name: '논리 체크 후보(녹취 공통 패턴)', body: [], active: false, order: 26,
+    patterns, cardsUsed: st.cards, existingLines: existing.length, at: Date.now(), model: PATTERN_MODEL,
+  });
+  st.status = 'done'; st.at = Date.now(); st.candidates = patterns.length;
+  await ref.set({ status: 'done', at: st.at, total: st.total, done: st.done, cards: st.cards, candidates: patterns.length });
+  return { status: 'done', total: st.total, done: st.done, candidates: patterns.length, cardsUsed: st.cards };
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -232,6 +319,12 @@ export default async function handler(req, res) {
   // 백필만 (녹취 목록을 읽지 않는다). 누구나 부르는 /api/backfill 은 10분 스로틀, 이건 커밍쏜 전용 즉시 실행.
   if (req.method === 'GET' && req.query && req.query.backfill) {
     return res.status(200).json({ backfill: await backfillEmbeddings() });
+  }
+  // 공통 판단 패턴 추출 — 배치 2개씩. patterns=force 면 처음부터 다시.
+  if (req.method === 'GET' && req.query && req.query.patterns) {
+    if (!KEY) return res.status(500).json({ error: 'CLAUDE_API_KEY 없음' });
+    const r = await patternsStep(db, KEY, { force: req.query.patterns === 'force', maxBatches: Math.min(4, Number(req.query.batches) || 2) });
+    return res.status(200).json({ patterns: r });
   }
   // AI 사전 검수 — 한 번에 녹취 6편 분량. 코치 화면이 커밍쏜 로그인 때 남은 게 없을 때까지 반복해 부른다.
   if (req.method === 'GET' && req.query && req.query.prereview) {
@@ -299,4 +392,4 @@ export default async function handler(req, res) {
 }
 
 // 테스트용 노출 (scripts/_prtest.mjs)
-export const __test = { prereviewBatch, quoteInText, quoteMatch };
+export const __test = { prereviewBatch, quoteInText, quoteMatch, patternsStep };

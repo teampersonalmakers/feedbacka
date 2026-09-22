@@ -170,7 +170,7 @@ service cloud.firestore {
     match /guidelines/{id} {
       allow read: if isOwnerOnly();
       allow create, update: if isOwnerOnly()
-        && request.resource.data.section in ['persona', 'philosophy', 'tone', 'format', 'freeGuide', 'doNotDo', 'category', 'voice', 'logic']
+        && request.resource.data.section in ['persona', 'philosophy', 'tone', 'format', 'freeGuide', 'doNotDo', 'category', 'voice', 'logic', 'logicCandidates']
         && request.resource.data.body is list
         && request.resource.data.active is bool
         && sizeOk();

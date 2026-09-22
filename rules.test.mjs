@@ -166,6 +166,8 @@ await t('channels(채널 리서치 캐시) 읽기·쓰기 차단',
   () => assertFails(getDoc(doc(owner, 'channels', 'c1'))));
 await t('channels 쓰기 차단',
   () => assertFails(setDoc(doc(owner, 'channels', 'c1'), { title: 'x' })));
+await t('guidelines logicCandidates(패턴 후보) 섹션 저장 가능',
+  () => assertSucceeds(setDoc(doc(owner, 'guidelines', 'logic_candidates'), { section: 'logicCandidates', body: [], active: false, patterns: [{ text: 'x', accepted: true }] })));
 await t('guidelines logic(컨설팅 논리) 섹션 저장 가능',
   () => assertSucceeds(setDoc(doc(owner, 'guidelines', 'logic'), { section: 'logic', body: ['주제 → 결핍'], active: true })));
 await t('guidelines voice(발화 샘플) 섹션 저장 가능',

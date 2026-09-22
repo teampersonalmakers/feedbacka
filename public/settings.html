@@ -195,6 +195,18 @@ body { background: var(--bg); color: var(--ink); font-family: var(--font); min-h
     <div class="note">순서대로 프롬프트에 들어갑니다: 페르소나 → 핵심 철학 → 말투 → 피드백 순서 → 추가 지침 → 절대 하지 말 것 → 주제별 지침(전부). 주제별 지침은 AI가 질문을 읽고 해당하는 것만 골라 적용합니다. 아래 <b>프롬프트 미리보기</b>로 최종 모습을 확인할 수 있습니다.</div>
     <div class="cards" id="guideCards"><div class="empty"><div class="icon">⚙️</div>불러오는 중…</div></div>
 
+    <h2 class="section-title">논리 체크 후보 — 녹취에서 반복되는 판단 패턴</h2>
+    <p class="meta" style="margin-bottom:10px">승인 카드와 사전 검수 4점 이상 초안을 묶어 읽혀 여러 녹취에서 반복되는 커밍쏜의 판단 원칙을 뽑습니다. <b>후보일 뿐 자동 반영은 없습니다.</b> "기존 n번 뒷받침"은 이미 논리 체크에 있는 줄(근거 강화), "새 패턴"은 없는 줄입니다. 채택하면 논리 체크 맨 아래에 추가됩니다. 커밍쏜 로그인 때 하루 한 번 자동 실행됩니다.</p>
+    <div class="card" id="patternPanel">
+      <div class="card-head"><span class="ord">🔎</span><h3>후보 목록</h3>
+        <div style="margin-left:auto;display:flex;gap:6px;align-items:center">
+          <span class="meta" id="patStat">불러오는 중…</span>
+          <button class="btn btn-ghost" id="patRun" title="Sonnet 으로 카드 최대 400장 분석 · 비용 약 1~2천 원">지금 추출</button>
+        </div>
+      </div>
+      <div id="patList" class="body"><div class="empty">아직 추출 결과가 없습니다.</div></div>
+    </div>
+
     <h2 class="section-title">카테고리별 지침</h2>
     <p class="meta" style="margin-bottom:10px">여섯 주제가 모두 프롬프트에 들어가고, AI가 질문 주제를 판단해 해당하는 지침을 적용합니다. 한 줄에 하나씩.</p>
     <div class="cards" id="catCards"></div>
@@ -584,9 +596,9 @@ $('bulkApprove').onclick = function() { bulk(true); };
 $('bulkReject').onclick = function() { bulk(false); };
 
 // ─── 녹취 → 판단 카드 증류 ──────────────────────────────────────────────────
-async function distillApi(method, body) {
+async function distillApi(method, body, qs) {
   var token = await window.PMFire.idToken();
-  var res = await fetch('/api/distill', { method: method, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: body ? JSON.stringify(body) : undefined });
+  var res = await fetch('/api/distill' + (qs || ''), { method: method, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: body ? JSON.stringify(body) : undefined });
   var d = await res.json();
   if (!res.ok || d.error) throw new Error(d.error || ('HTTP ' + res.status));
   return d;
@@ -628,9 +640,58 @@ $('dsReembed').onclick = async function() {
 // ─── 로드 ───────────────────────────────────────────────────────────────────
 function denied(e) { return /permission|PERMISSION/i.test(e.message) ? '커밍쏜 계정만 볼 수 있는 페이지입니다.' : '불러오지 못했습니다: ' + e.message; }
 async function reloadGuide() {
-  try { gdocs = await window.PMFire.listGuidelines(); renderGuide(); }
+  try { gdocs = await window.PMFire.listGuidelines(); renderGuide(); renderPatterns(); }
   catch (e) { $('guideCards').innerHTML = '<div class="empty"><div class="icon">🔒</div>' + esc(denied(e)) + '</div>'; }
 }
+
+// ─── 논리 체크 후보 (녹취 공통 패턴) ─────────────────────────────────────────
+function patternsDoc() { return gdocs.filter(function(d) { return d.section === 'logicCandidates'; })[0] || null; }
+function renderPatterns() {
+  var pd = patternsDoc(); var el = $('patList');
+  if (!pd || !(pd.patterns || []).length) { $('patStat').textContent = '추출 결과 없음'; el.innerHTML = '<div class="empty">아직 추출 결과가 없습니다. "지금 추출"을 누르거나 코치 화면에 로그인하면 자동으로 만들어집니다.</div>'; return; }
+  var pats = pd.patterns.slice().sort(function(a, b) { return (b.count || 0) - (a.count || 0); });
+  var newN = pats.filter(function(x) { return !x.matches && !x.accepted; }).length;
+  $('patStat').textContent = when(pd.at) + ' · 카드 ' + (pd.cardsUsed || 0) + '장 → 후보 ' + pats.length + '개 (새 패턴 ' + newN + ')';
+  el.innerHTML = '';
+  pats.forEach(function(x) {
+    var row = document.createElement('div'); row.className = 'crow'; row.style.gridTemplateColumns = '64px 1fr 150px';
+    var tag = x.accepted ? '<span class="pill" style="background:var(--ok-soft);color:var(--ok);font-size:10px;padding:2px 6px">채택됨</span>'
+      : x.matches ? '<span class="pill" style="background:var(--accent-soft);color:var(--accent);font-size:10px;padding:2px 6px" title="논리 체크 ' + x.matches + '번과 같은 뜻 — 근거가 녹취 ' + (x.count || 0) + '편으로 확인됨">기존 ' + x.matches + '번 뒷받침</span>'
+      : '<span class="pill" style="background:var(--warn-soft);color:var(--warn);font-size:10px;padding:2px 6px">새 패턴</span>';
+    row.innerHTML = '<div class="cell" style="font-weight:700">' + esc(String(x.count || 0)) + '편</div>' +
+      '<div class="s">' + tag + ' ' + esc(x.text) + '<small>' + esc((x.docs || []).slice(0, 4).join(' · ')) + ((x.docs || []).length > 4 ? ' 외 ' + ((x.docs || []).length - 4) + '편' : '') + '</small></div>' +
+      '<div class="cell"></div>';
+    var cell = row.lastElementChild;
+    if (!x.accepted && !x.matches) {
+      var b = document.createElement('button'); b.className = 'btn btn-primary'; b.style.padding = '5px 10px'; b.textContent = '논리 체크에 추가';
+      b.onclick = async function() {
+        b.disabled = true;
+        try {
+          var logic = gdocs.filter(function(d) { return d.section === 'logic'; })[0];
+          var body = (logic && logic.body ? logic.body.slice() : []); body.push(x.text + ' (녹취 ' + (x.count || 0) + '편 반복)');
+          await window.PMFire.saveGuideline(logic ? logic.id : 'logic', { section: 'logic', name: '컨설팅 논리 체크', body: body, active: true, order: logic ? logic.order : 2.5 });
+          x.accepted = true; await window.PMFire.saveLogicCandidates(pd.patterns);
+          await reloadGuide();
+        } catch (e) { alert('추가 실패: ' + e.message); b.disabled = false; }
+      };
+      cell.appendChild(b);
+    }
+    el.appendChild(row);
+  });
+}
+$('patRun').onclick = async function() {
+  var b = $('patRun'); b.disabled = true;
+  try {
+    for (var i = 0; i < 20; i++) {
+      var d = await distillApi('GET', null, '?patterns=' + (i === 0 ? 'force' : '1') + '&batches=3');
+      var p = d.patterns || {};
+      $('patStat').textContent = p.status === 'running' ? '추출 중… ' + p.done + '/' + p.total + ' 배치' : (p.status + (p.error ? ' ' + p.error : ''));
+      if (p.status !== 'running') break;
+    }
+    await reloadGuide();
+  } catch (e) { $('patStat').textContent = '실패: ' + e.message; }
+  b.disabled = false;
+};
 async function reloadCases() {
   try { cases = await window.PMFire.listCases(); renderCases(); }
   catch (e) { $('caseList').innerHTML = '<div class="empty"><div class="icon">🔒</div>' + esc(denied(e)) + '</div>'; }

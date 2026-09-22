@@ -923,6 +923,15 @@ window.addEventListener('pmfire:ready', async function() {
     }
     sessionStorage.setItem('pm_prereview_done', '1');
     if (total.approved) { var tok2 = await window.PMFire.idToken(); fetch('/api/distill?backfill=1', { headers: { Authorization: 'Bearer ' + tok2 } }).catch(function() {}); }
+    // 3) 녹취 공통 판단 패턴 추출 — 하루 한 번(서버가 24시간 내면 건너뜀). 결과는 설정 › 논리 체크 후보에 "후보"로만.
+    for (var j = 0; j < 12; j++) {
+      var tok3 = await window.PMFire.idToken();
+      var rp = await fetch('/api/distill?patterns=1&batches=2', { headers: { Authorization: 'Bearer ' + tok3 } });
+      var dp = await rp.json(); var pp = dp && dp.patterns; if (!pp) break;
+      console.info('[PMFire] 패턴 추출:', JSON.stringify(pp));
+      if (pp.status !== 'running') break;
+      await new Promise(function(ok) { setTimeout(ok, 1500); });
+    }
   } catch(e) { console.warn('[PMFire] 사전 검수 중단(무시):', e && e.message); }
 });
 // PMFire 가 없으면(설정 누락/네트워크 차단) 아래는 전부 no-op 이고 기존 동작 그대로다.
