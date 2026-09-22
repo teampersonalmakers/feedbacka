@@ -4,13 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Personalmakers AI</title>
+<link rel="icon" type="image/svg+xml" href="/logo.svg">
 <style>
 :root { --bg:#f6f7f9; --panel:#ffffff; --border:#e5e8ee; --ink:#1a1d23; --ink-mid:#4a5160; --ink-soft:#8a91a0; --accent:#2f6bff; --accent-soft:#eef3ff; --font:'Pretendard',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
 * { margin:0; padding:0; box-sizing:border-box; }
 html,body { height:100%; }
 body { font-family:var(--font); background:var(--bg); color:var(--ink); display:flex; flex-direction:column; }
 header { display:flex; align-items:center; gap:10px; padding:12px 20px; background:var(--panel); border-bottom:1px solid var(--border); position:sticky; top:0; z-index:50; }
-.logo { background:var(--accent); color:#fff; font-size:11px; font-weight:800; padding:4px 9px; border-radius:6px; letter-spacing:.3px; }
+.logomark { width:36px; height:36px; border-radius:9px; display:block; flex:none; }
 .htitle { font-weight:700; font-size:14px; }
 .hsub { font-size:11px; color:var(--ink-soft); }
 .hspace { flex:1; }
@@ -162,9 +163,9 @@ textarea#inp:focus { outline:none; border-color:var(--accent); }
 </div>
 
 <header>
-  <span class="logo">Personalmakers AI</span>
+  <img class="logomark" src="/logo.svg" alt="Personal Makers" width="36" height="36">
   <div>
-    <div class="htitle">피드백 어시스턴트</div>
+    <div class="htitle">Personalmakers AI</div>
     <div class="hsub">무엇이든 물어보세요 · 커밍쏜의 지식과 기준으로 답합니다</div>
   </div>
   <div class="hspace"></div>
@@ -195,7 +196,10 @@ textarea#inp:focus { outline:none; border-color:var(--accent); }
         <option value="5기">5기</option>
         <option value="6기" selected>6기</option>
         <option value="7기">7기</option>
+        <option value="디렉터">디렉터</option>
+        <option value="기타">기타</option>
       </select>
+      <input class="chip-in" id="stuCohortEtc" placeholder="직접 입력 (예: 8기)" maxlength="10" style="display:none;width:120px">
       <div class="mode-tg">
         <button id="mConv" class="on" onclick="setMode('conv')">구어체</button>
         <button id="mRep" onclick="setMode('report')">문어체</button>
@@ -331,9 +335,25 @@ function buildEmpty() {
   d.id = 'empty';
   return d;
 }
-var COHORTS = ['5기', '6기', '7기'];
-function cohortVal() { return document.getElementById('stuCohort').value || '6기'; }
-function setCohort(v) { if (COHORTS.indexOf(v) >= 0) document.getElementById('stuCohort').value = v; }
+var COHORTS = ['5기', '6기', '7기', '디렉터'];
+// 기수 값. '기타'를 고르면 옆 입력칸의 글자가 기수가 된다(최대 10자 — 서버·규칙 한도와 같다). 비어 있으면 '기타'.
+function cohortVal() {
+  var sel = document.getElementById('stuCohort').value || '6기';
+  if (sel !== '기타') return sel;
+  return (document.getElementById('stuCohortEtc').value || '').trim().slice(0, 10) || '기타';
+}
+function setCohort(v) {
+  var sel = document.getElementById('stuCohort'), etc = document.getElementById('stuCohortEtc');
+  if (!v) v = '6기';
+  if (COHORTS.indexOf(v) >= 0) { sel.value = v; etc.value = ''; }
+  else { sel.value = '기타'; etc.value = v === '기타' ? '' : v; }
+  etc.style.display = sel.value === '기타' ? '' : 'none';
+}
+document.getElementById('stuCohort').addEventListener('change', function() {
+  var etc = document.getElementById('stuCohortEtc');
+  etc.style.display = this.value === '기타' ? '' : 'none';
+  if (this.value === '기타') etc.focus();
+});
 function fmtTs(ts) {
   if (!ts) return '';
   var d = new Date(ts); if (isNaN(d)) return '';
@@ -444,16 +464,17 @@ function addResearch(b, evidence) {
 function addReferences(b, evidence) {
   var r = evidence && evidence.references; if (!r || !r.contents || !r.contents.length) return;
   var d = document.createElement('div'); d.className = 'refs';
-  var h = document.createElement('div'); h.className = 'rh'; h.textContent = '📺 발견 확률 높은 콘텐츠 레퍼런스 · 주제: ' + (r.topic || '') + ' (구독자 대비 조회수 순)'; d.appendChild(h);
+  var h = document.createElement('div'); h.className = 'rh'; h.textContent = '📺 콘텐츠 레퍼런스 (미드폼 4~20분) · 주제: ' + (r.topic || '') + ' · 답변의 #번호와 같음'; d.appendChild(h);
   var g = document.createElement('div'); g.className = 'grid';
+  var KIND = { trend: '트렌드', evergreen: '에버그린' };
   r.contents.forEach(function(c, i) {
     var a = document.createElement('a'); a.href = c.url; a.target = '_blank'; a.rel = 'noopener';
     var t = document.createElement('div'); t.className = 'thumb';
     var img = document.createElement('img'); img.src = c.thumb; img.alt = c.title; img.loading = 'lazy'; t.appendChild(img);
-    var n = document.createElement('span'); n.textContent = '#' + (i + 1); t.appendChild(n);
+    var n = document.createElement('span'); n.textContent = '#' + (c.n || (i + 1)) + (c.kind ? ' · ' + (KIND[c.kind] || c.kind) : '') + (c.belowBar ? ' · 기준 미달' : ''); t.appendChild(n);
     var cap = document.createElement('div'); cap.className = 'cap';
     var bb = document.createElement('b'); bb.textContent = c.title; bb.title = c.title; cap.appendChild(bb);
-    cap.appendChild(document.createTextNode(c.channelTitle + ' · 구독 ' + fmtKo(c.subscribers) + ' · 조회 ' + fmtKo(c.views) + ' (' + c.ratio + '배)'));
+    cap.appendChild(document.createTextNode(c.channelTitle + ' · 구독 ' + fmtKo(c.subscribers) + ' · 조회 ' + fmtKo(c.views) + ' (' + c.ratio + '배)' + (c.keyword ? ' · "' + c.keyword + '"' : '')));
     a.appendChild(t); a.appendChild(cap); g.appendChild(a);
   });
   d.appendChild(g); b.bubble.appendChild(d);
@@ -676,7 +697,7 @@ async function send() {
 
   // 이어지는 질문("그럼 썸네일은요?")은 그 자체로 검색이 안 된다 — 직전 질문을 검색어에 붙인다.
   var prevQ = turns.length > 1 ? (turns[turns.length - 2].q || '').slice(0, 300) : '';
-  var body = { question: question, chat: true, searchQuery: ((prevQ ? prevQ + ' ' : '') + (text || question)).slice(0, 1000), studentName: student, cohort: student ? cohortVal() : '', extraContext: extra, mode: mode, stream: true };
+  var body = { question: question, chat: true, searchQuery: ((prevQ ? prevQ + ' ' : '') + (text || question)).slice(0, 1000), studentName: student, cohort: student ? cohortVal() : '', extraContext: extra, mode: mode, stream: true, wantTitle: turns.length === 1 };
   if (turns.length > 1) body.contextQ = '1';
 
   try {
@@ -708,6 +729,7 @@ async function send() {
           if (ev === 'meta') { turn.sources = o.sources || []; turn.evidence = o.evidence || null; }
           else if (ev === 'delta' && o.t) { acc += o.t; b.text.innerHTML = md(acc) + '<span class="cursor"></span>'; scrollBottom(); }
           else if (ev === 'status' && o.t) { b.text.innerHTML = md(acc) + '<span class="cursor"></span><div class="stat">' + o.t + '</div>'; scrollBottom(); }
+          else if (ev === 'title' && o.t) { var cc = activeConv(); if (cc) { cc.title = String(o.t).slice(0, 40); cc.titleAI = true; renderSide(); } }
           else if (ev === 'error') throw new Error(o.message || '스트리밍 오류');
         }
       }
@@ -784,7 +806,15 @@ renderAll();
 .s-item:hover { background:var(--bg); }
 .s-item.on { background:var(--accent-soft); color:var(--accent); font-weight:600; }
 .s-item .t { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.s-item .stu { font-size:10px; background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:1px 5px; color:var(--ink-soft); flex-shrink:0; }
+.s-group { display:flex; align-items:center; gap:6px; padding:8px 8px 5px; margin-top:4px; font-size:12.5px; font-weight:700; color:var(--ink); cursor:pointer; border-radius:8px; user-select:none; }
+.s-group:hover { background:var(--bg); }
+.s-group .caret { font-size:8px; color:var(--ink-soft); transition:transform .15s; width:10px; }
+.s-group.open .caret { transform:rotate(90deg); }
+.s-group.has-on .gname { color:var(--accent); }
+.s-group .gname { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.s-group .cnt { margin-left:auto; font-size:10px; font-weight:500; color:var(--ink-soft); }
+.s-item.sub { padding-left:24px; }
+.s-item .stu, .s-group .stu { font-size:10px; font-weight:500; background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:1px 5px; color:var(--ink-soft); flex-shrink:0; }
 .s-item .del { opacity:0; font-size:11px; color:var(--ink-soft); flex-shrink:0; padding:2px 4px; }
 .s-item:hover .del { opacity:.7; }
 .s-item .del:hover { color:#c0392b; opacity:1; }
@@ -842,18 +872,46 @@ function delConv(id, ev) {
   if (activeId === id) { activeId = null; turns = []; renderAll(); }
   persistConvs(); renderSide();
 }
+// 대화 목록은 사람별로 묶는다 — 이름(기수) 아래에 그 사람과 나눈 대화들. 그룹은 최근 대화순, 접힘 상태는 기기에 기억.
+var sideCollapsed = {};
+try { sideCollapsed = JSON.parse(localStorage.getItem('pm_side_collapsed') || '{}') || {}; } catch(e) { sideCollapsed = {}; }
 function renderSide() {
   var list = document.getElementById('sList');
   if (!list) return;
   list.innerHTML = '';
+  var groups = {}, order = [];
   convs.forEach(function(c) {
-    var d = document.createElement('div');
-    d.className = 's-item' + (c.id === activeId ? ' on' : '');
-    d.onclick = function() { openConv(c.id); };
-    var t = document.createElement('span'); t.className = 't'; t.textContent = c.title || '새 대화'; d.appendChild(t);
-    if (c.student) { var s = document.createElement('span'); s.className = 'stu'; s.textContent = c.student + (c.cohort ? ' · ' + c.cohort : ''); d.appendChild(s); }
-    var x = document.createElement('span'); x.className = 'del'; x.textContent = '✕'; x.onclick = function(ev) { delConv(c.id, ev); }; d.appendChild(x);
-    list.appendChild(d);
+    var key = (c.student || '').trim();
+    if (!groups[key]) { groups[key] = { name: key, cohorts: [], items: [], ts: 0 }; order.push(key); }
+    var g = groups[key]; g.items.push(c);
+    if (c.cohort && g.cohorts.indexOf(c.cohort) < 0) g.cohorts.push(c.cohort);
+    if ((c.ts || 0) > g.ts) g.ts = c.ts || 0;
+  });
+  order.sort(function(a, b) { return groups[b].ts - groups[a].ts; });
+  order.forEach(function(key) {
+    var g = groups[key];
+    var hasActive = g.items.some(function(c) { return c.id === activeId; });
+    var open = hasActive || !sideCollapsed[key];
+    var h = document.createElement('div'); h.className = 's-group' + (open ? ' open' : '') + (hasActive ? ' has-on' : '');
+    h.onclick = function() {
+      sideCollapsed[key] = open ? 1 : 0;
+      try { localStorage.setItem('pm_side_collapsed', JSON.stringify(sideCollapsed)); } catch(e) {}
+      renderSide();
+    };
+    var caret = document.createElement('span'); caret.className = 'caret'; caret.textContent = '▶'; h.appendChild(caret);
+    var nm = document.createElement('span'); nm.className = 'gname'; nm.textContent = key || '이름 없음'; nm.title = key || '수강생 이름을 안 적은 대화'; h.appendChild(nm);
+    if (g.cohorts.length) { var s = document.createElement('span'); s.className = 'stu'; s.textContent = g.cohorts.join(' · '); h.appendChild(s); }
+    var cnt = document.createElement('span'); cnt.className = 'cnt'; cnt.textContent = g.items.length; h.appendChild(cnt);
+    list.appendChild(h);
+    if (!open) return;
+    g.items.forEach(function(c) {
+      var d = document.createElement('div');
+      d.className = 's-item sub' + (c.id === activeId ? ' on' : '');
+      d.onclick = function() { openConv(c.id); };
+      var t = document.createElement('span'); t.className = 't'; t.textContent = c.title || '새 대화'; t.title = c.title || ''; d.appendChild(t);
+      var x = document.createElement('span'); x.className = 'del'; x.textContent = '✕'; x.onclick = function(ev) { delConv(c.id, ev); }; d.appendChild(x);
+      list.appendChild(d);
+    });
   });
 }
 // 사이드바 DOM 구성
@@ -932,14 +990,16 @@ window.addEventListener('pmfire:ready', async function() {
   (async function() {
     if (sessionStorage.getItem('pm_patterns_done')) return;
     try {
+      var settled = true;
       for (var j = 0; j < 12; j++) {
         var rp = await fetch('/api/distill?patterns=1&batches=2', await auth());
         var dp = await rp.json(); var pp = dp && dp.patterns; if (!pp) break;
         console.info('[PMFire] 패턴 추출:', JSON.stringify(pp));
+        if (pp.status === 'error') { settled = false; break; }   // 실패는 플래그를 남기지 않는다 — 다음 새로고침 때 병합만 다시 시도
         if (pp.status !== 'running') break;
         await sleep(1500);
       }
-      sessionStorage.setItem('pm_patterns_done', '1');
+      if (settled) sessionStorage.setItem('pm_patterns_done', '1');
     } catch(e) { console.warn('[PMFire] 패턴 추출 중단(무시):', e && e.message); }
   })();
 });

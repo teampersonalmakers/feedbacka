@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200" role="img" aria-label="Personal Makers">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d3fd6"/>
+      <stop offset="1" stop-color="#062b8f"/>
+    </linearGradient>
+    <linearGradient id="tx" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#c9d8ff"/>
+      <stop offset="1" stop-color="#ffffff"/>
+    </linearGradient>
+  </defs>
+  <rect width="200" height="200" rx="36" fill="url(#bg)"/>
+  <g font-family="Montserrat, 'Pretendard', -apple-system, 'Segoe UI', Arial, sans-serif" font-weight="800" text-anchor="middle" fill="url(#tx)">
+    <text x="100" y="96" font-size="34" letter-spacing="-1">PERSONAL</text>
+    <text x="96" y="134" font-size="34" letter-spacing="-1">MAKERS</text>
+  </g>
+  <circle cx="158" cy="129" r="5.5" fill="#ff6b1a"/>
+</svg>

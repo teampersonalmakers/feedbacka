@@ -259,6 +259,23 @@ async function loadPlaybookFromNotion(notionKey) {
 }
 
 // 로컬 파일 폴백
+// ─── 대화 제목 — 목록에 "이름 ㅣ 주제"로 보이게 짧은 주제 라벨. 첫 턴에만, 답변과 병렬로 Sonnet(사고 없음).
+const TITLE_SYSTEM = `디렉터가 AI에게 보낸 첫 메시지를 대화 목록 제목으로 줄인다.
+- 6~16자 한국어 명사구. 예: "브랜드로드맵 관련 질문", "코어 키워드 확정 여부", "썸네일 문구 피드백".
+- 사람 이름·기수·인사말·따옴표는 넣지 않는다. 메시지에 없는 내용은 만들지 않는다.
+- 출력은 제목 한 줄만.`;
+export async function makeConvTitle(question, claudeKey) {
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST', headers: claudeHeaders(claudeKey),
+    body: claudeBody(TITLE_SYSTEM, String(question).slice(0, 1500), { model: 'claude-sonnet-5', maxTokens: 60, thinking: false, fallbacks: false }),
+    signal: AbortSignal.timeout(8000),
+  });
+  const d = await r.json();
+  if (d.error) throw new Error(d.error.message);
+  const t = pickText(d).split('\n').map((x) => x.replace(/^["'“”‘’\-\s]+|["'“”‘’\s.]+$/g, '').trim()).filter(Boolean)[0] || '';
+  return t.slice(0, 30);
+}
+
 function loadGuidelinesFromFile() {
   try {
     const gPath = path.join(process.cwd(), 'knowledge', 'guidelines.json');
@@ -441,6 +458,10 @@ export default async function handler(req, res) {
       } catch (e) { console.warn('레퍼런스 리서치 실패(무시):', e.message.slice(0, 120)); refResearch = { ok: false, topic: '', queries: [], tiers: [], contents: [], thumbs: [], errors: [String(e.message).slice(0, 120)] }; }
     })();
   }
+
+  // 대화 제목(첫 턴만). 실패해도 답변엔 영향 없다 — 없으면 클라이언트가 질문 앞부분을 그대로 쓴다.
+  const titlePromise = (req.body && req.body.wantTitle && question) ? makeConvTitle(String(question), CLAUDE_KEY).catch((e) => { console.warn('제목 생성 실패(무시):', String(e.message).slice(0, 80)); return ''; }) : null;
+  const titleOrEmpty = async () => (titlePromise ? await Promise.race([titlePromise, new Promise((ok) => setTimeout(() => ok(''), 2500))]) : '');
 
   let hits = [];
   let vectorCases = null;   // 판단 카드(승인 사례) 벡터 검색 결과. null 이면 단어 겹침 폴백.
@@ -808,6 +829,8 @@ ${isPublic
           } catch(ignored) {}
         }
       }
+      const convTitle = await titleOrEmpty();
+      if (convTitle) res.write('event: title\ndata: ' + JSON.stringify({ t: convTitle }) + '\n\n');
       res.write('event: done\ndata: {}\n\n');
       if (searches) M.sources.webSearches = searches;
       // 기준서 4절 지표 — "커밍쏜 확인 필요" 비율. 마지막 줄 규칙으로 답변이 스스로 표시한다.
@@ -835,7 +858,7 @@ ${isPublic
     M.needsOwner = /커밍쏜 확인 필요/.test(text.slice(-600));
     M.closedByDirector = /디렉터 선에서 (마무리|전달 가능)/.test(text.slice(-600));
     logMetrics({ ok: true, answerChars: text.length });
-    return res.status(200).json({ feedback: text, sources: hits, evidence });
+    return res.status(200).json({ feedback: text, sources: hits, evidence, title: await titleOrEmpty() });
   } catch(e) {
     logMetrics({ ok: false, error: e.message });
     return res.status(500).json({ error: e.message });

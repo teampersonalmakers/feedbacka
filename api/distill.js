@@ -234,11 +234,13 @@ const EXTRACT_PATTERNS_SYSTEM = `당신은 퍼스널메이커스 팀의 분석�
 - 순서·타겟·결핍·코어 키워드·메시지·콘텐츠·수익화·멘탈 등 주제를 가리지 않는다.
 - 커밍쏜의 표현을 살리되 내부 용어(경로 1/2, 유형 A/B, 얼라인먼트)는 쓰지 않는다.
 출력은 JSON 배열만. [{"pattern": "원칙 한 줄", "cards": ["카드id", ...]}]`;
+// 병합 출력은 후보 번호(from)만 적게 한다 — 카드 id 를 다시 쓰게 하면 출력이 길어져 한도에서 잘린다(첫 실행이 그렇게 실패했다).
 const MERGE_PATTERNS_SYSTEM = `당신은 퍼스널메이커스 팀의 분석가입니다. [기존 논리 체크]와 여러 배치에서 뽑은 [패턴 후보]를 받습니다.
-1) 뜻이 같은 후보끼리 하나로 합칩니다(cards 는 합집합).
-2) 각 후보가 기존 논리 체크의 몇 번과 같은 뜻인지 표시합니다(matches: 번호, 없으면 0). 기존 것을 더 구체화하는 정도면 그 번호를 적습니다.
+1) 뜻이 같은 후보끼리 하나로 합칩니다. from 에는 합친 후보들의 번호를 전부 적습니다.
+2) 각 항목이 기존 논리 체크의 몇 번과 같은 뜻인지 표시합니다(matches: 번호, 없으면 0). 기존 것을 더 구체화하는 정도면 그 번호를 적습니다.
 3) 문장은 지침 형식 20~120자, 단정형. 내부 용어 금지.
-출력은 JSON 배열만. [{"text": "원칙 한 줄", "matches": 0, "cards": ["카드id", ...]}]`;
+4) 카드 id 는 쓰지 않습니다. 후보 번호만 씁니다.
+출력은 JSON 배열만. [{"text": "원칙 한 줄", "matches": 0, "from": [후보 번호, ...]}]`;
 
 async function patternCards(db) {
   const snap = await db.collection(COL.cases).limit(1000).get();
@@ -253,9 +255,11 @@ async function claudeJson(system, user, KEY, maxTokens) {
   const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: claudeHeaders(KEY), body: claudeBody(system, user, { maxTokens, effort: 'medium', model: PATTERN_MODEL }) });
   const d = await r.json();
   if (!r.ok || d.error) throw new Error(d.error?.message || ('Claude ' + r.status));
-  const m = pickText(d).match(/\[[\s\S]*\]/);
-  const arr = m ? parseCards(m[0]) : null;
-  if (!Array.isArray(arr)) throw new Error('JSON 배열 아님');
+  const txt = pickText(d);
+  const m = txt.match(/\[[\s\S]*\]/);
+  let arr = m ? parseCards(m[0]) : null;
+  if (!Array.isArray(arr)) { const o = (txt.match(/\{[\s\S]*\}/) || [])[0]; const obj = o ? parseCards(o) : null; if (obj && Array.isArray(obj.patterns)) arr = obj.patterns; }
+  if (!Array.isArray(arr)) throw new Error(d.stop_reason === 'max_tokens' ? '출력 한도 초과(max_tokens) — JSON 이 잘림' : 'JSON 배열 아님');
   return arr;
 }
 async function patternsStep(db, KEY, { force = false, maxBatches = 2 } = {}) {
@@ -287,12 +291,16 @@ async function patternsStep(db, KEY, { force = false, maxBatches = 2 } = {}) {
   const g = await db.collection(COL.guidelines).where('section', '==', 'logic').limit(1).get();
   const existing = g.docs[0] ? (g.docs[0].data().body || []) : [];
   const all = Object.values(st.results).flat();
-  const user = '[기존 논리 체크]\n' + existing.map((l, i) => `${i + 1}. ${l}`).join('\n') + '\n\n[패턴 후보 ' + all.length + '개]\n' + all.map((x, i) => `${i + 1}. ${x.pattern} [cards: ${x.cards.join(', ')}]`).join('\n');
+  // 후보에 카드 수(출처 수)만 보여주고 id 는 감춘다 — 모델은 번호로만 답하고, 카드 합집합은 코드가 만든다.
+  const user = '[기존 논리 체크]\n' + existing.map((l, i) => `${i + 1}. ${l}`).join('\n') + '\n\n[패턴 후보 ' + all.length + '개]\n' + all.map((x, i) => `${i + 1}. ${x.pattern} (카드 ${x.cards.length}장)`).join('\n');
   let merged;
-  try { merged = await claudeJson(MERGE_PATTERNS_SYSTEM, user, KEY, 8000); }
-  catch (e) { st.status = 'error'; st.error = String(e.message).slice(0, 160); await ref.set(st); return { status: 'error', error: st.error }; }
+  try { merged = await claudeJson(MERGE_PATTERNS_SYSTEM, user, KEY, 12000); }
+  catch (e) { st.status = 'error'; st.error = String(e.message).slice(0, 160); st.at = Date.now(); await ref.set(st); return { status: 'error', error: st.error }; }
   const patterns = merged.filter((x) => x && x.text).map((x) => {
-    const cards = [...new Set((Array.isArray(x.cards) ? x.cards : []).map(String))].slice(0, 80);
+    const from = (Array.isArray(x.from) ? x.from : []).map((n) => all[Number(n) - 1]).filter(Boolean);
+    const fromCards = from.flatMap((c) => c.cards);
+    // 모델이 예전 형식(cards)으로 답해도 받는다.
+    const cards = [...new Set([...fromCards, ...(Array.isArray(x.cards) ? x.cards : [])].map(String))].slice(0, 80);
     const docs = [...new Set(cards.map((id) => st.cardDocs[id]).filter(Boolean))];
     return { text: String(x.text).slice(0, 220), matches: Math.max(0, Math.min(existing.length, Number(x.matches) || 0)), cards, docs, count: docs.length || cards.length, accepted: false };
   }).sort((a, b) => b.count - a.count);
