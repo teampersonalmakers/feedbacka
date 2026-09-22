@@ -38,7 +38,12 @@ main { flex:1; overflow-y:auto; }
 .bubble .atext { padding-right:28px; }
 .atext { font-size:14.2px; line-height:1.75; word-break:break-word; }
 .atext b { font-weight:700; }
-.atext h4 { font-size:14.5px; margin:14px 0 6px; }
+.atext h4 { font-size:14.5px; margin:12px 0 4px; }
+.atext h4:first-child { margin-top:0; }
+.atext p { margin:0 0 9px; }
+.atext p:last-child { margin-bottom:0; }
+.atext hr { border:0; border-top:1px solid var(--border); margin:10px 0; }
+.atext hr + h4 { margin-top:8px; }
 .cursor { display:inline-block; width:8px; height:16px; background:var(--accent); border-radius:2px; animation:blink 1s infinite; vertical-align:text-bottom; }
 /* ─── 메모: 답변 옆 (넓은 화면) / 아래 (좁은 화면) ─── */
 .msg-a { flex-wrap:wrap; }
@@ -235,12 +240,20 @@ function setMode(m) {
 function useSug(el) { var t = document.getElementById('inp'); t.value = el.textContent; t.focus(); autoGrow(); }
 function newChat() { turns = []; ocrText = ''; clearAtt(); localStorage.removeItem('pm_chat_v1'); renderAll(); }
 function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+// 답변 마크다운 → HTML. 빈 줄은 문단으로, 제목·구분선 앞뒤 빈 줄은 지운다.
+// (예전엔 줄바꿈을 전부 <br> 로 바꿔서 "---" 와 제목 사이가 세 줄씩 비었다)
 function md(s) {
-  var h = esc(s);
+  var h = esc(String(s || '')).replace(/\r/g, '');
   h = h.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
-  h = h.replace(/^### (.+)$/gm, '<h4>$1</h4>').replace(/^## (.+)$/gm, '<h4>$1</h4>');
-  h = h.replace(/^---+$/gm, '<hr style="border:0;border-top:1px solid var(--border);margin:12px 0">');
-  return h.replace(/\n/g, '<br>');
+  h = h.replace(/^#{1,4} (.+)$/gm, '<h4>$1</h4>');
+  h = h.replace(/^\s*(---+|\*\*\*+|___+)\s*$/gm, '<hr>');
+  h = h.replace(/\n{3,}/g, '\n\n');
+  h = h.replace(/\n+(<h4>|<hr>)/g, '\n\n$1').replace(/(<\/h4>|<hr>)\n+/g, '$1\n\n');
+  return h.split(/\n\n/).map(function(p) {
+    p = p.trim(); if (!p) return '';
+    if (/^<h4>.*<\/h4>$/.test(p) || p === '<hr>') return p;
+    return '<p>' + p.replace(/\n/g, '<br>') + '</p>';
+  }).join('');
 }
 function autoGrow() { var t = document.getElementById('inp'); t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 180) + 'px'; }
 document.getElementById('inp').addEventListener('input', autoGrow);
