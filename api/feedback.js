@@ -617,7 +617,7 @@ ${outputList.includes('썸네일 아이디어') ? `## 🖼 썸네일 아이디�
   const toneGuide = g.toneGuide || '직접적이고 핵심을 먼저 말합니다. 칭찬보다 구체적인 방향 제시를 우선합니다.';
   // 피드백 순서 — 설정 페이지에서 커밍쏜이 정한 답변 흐름. 비어 있으면 넣지 않는다.
   const feedbackOrder = (g.feedbackOrder || []).length > 0
-    ? '\n\n[피드백 순서 — 답변은 이 흐름을 따른다]\n' + g.feedbackOrder.map((f, i) => `${i + 1}. ${f}`).join('\n')
+    ? '\n\n[피드백 순서 — 답변은 이 흐름을 따른다]\n' + g.feedbackOrder.map((f) => String(f).trim()).filter(Boolean).join('\n')
     : '';
   // 카테고리별 지침은 전부 넣고 AI 가 질문 주제에 맞는 것을 고른다.
   // 예전엔 사용자가 고른 카테고리 하나만 넣었는데, 질문은 주제가 섞여 오는 경우가 많고
@@ -678,7 +678,7 @@ ${outputList.includes('썸네일 아이디어') ? `## 🖼 썸네일 아이디�
 4) 자료에 없는 건 없다고 말한다. 자료가 뒷받침하지 않는 판단은 "이건 자료엔 없고 커밍쏜 원칙에서 나온 추론이에요"라고 드러낸다. 숫자가 필요한데 자료에 없으면 숫자를 만들지 말고 데이터 확인이 필요하다고 말한다('레퍼런스 채널 찾아줘'로 실제 수치 조회 가능). 자료에 없는데 "반드시·무조건"이라고 말하지 않는다.
 5) 확신의 정도를 구분한다. 같은 판단이 사례 2건 이상에서 반복되면 그렇다고 밝히며 확신 있게, 1건이면 "이런 사례가 하나 있었는데", 없으면 추론이라고 말한다. 최신 상담이 옛 판단과 다르면 최신을 따르고 차이를 한 줄 짚는다.
 6) 커밍쏜과 반대로 가지 않는다: 더하라·넓히라고 하지 않는다(빼는 것이 브랜딩), 순서를 건너뛰지 않는다, 여러 답을 나열해 고르게 하지 않는다, 칭찬으로 시작해 칭찬으로 끝내지 않는다, 약점(나이·부끄러움·고집·이단아)은 위로하지 않고 "이 사람만 할 수 있는 이유"로 뒤집는다.
-7) 마지막 줄은 반드시 둘 중 하나로 끝낸다. 디렉터가 이 답으로 수강생에게 바로 전달해도 되면 "✅ 디렉터 선에서 전달 가능". 사례가 없거나 자료끼리 충돌하거나 가격·계약·수익 배분·법적 사항처럼 커밍쏜 판단이 필요하면 "⚠️ 커밍쏜 확인 필요 — (무엇이 불확실한지 한 줄)". 확인 필요가 나오는 게 정상이다. 억지로 마무리하지 않는다.
+7) 마지막 줄은 반드시 둘 중 하나로 끝낸다. 디렉터가 이 답으로 수강생에게 바로 전달해도 되면 "디렉터 선에서 마무리". 추가 지침의 '커밍쏜 확인이 필요한 경우'에 해당하면 "커밍쏜 확인 필요 — 이유: ○○" 하고 커밍쏜이 바로 판단할 수 있게 수강생 상황을 2~3줄 덧붙인다. 확인 필요가 나오는 게 정상이다. 억지로 마무리하지 않는다.
 8) 보내기 전 자기 점검: 진짜 문제를 짚었나, 판단이 핵심 철학·논리 체크와 충돌하지 않나, 근거가 자료에 있나, 전달 가이드가 있나, 마지막 줄이 있나. 하나라도 아니면 고친다.`;
 
   const STABLE_SYSTEM = `${personaBase}
@@ -719,14 +719,14 @@ ${isPublic
       : `질문입니다.\n\n${question}\n\n---\n\n[참고 자료]\n${contextStr}${casesBlock}${channelsBlock}${referencesBlock}\n\n---\n\n커밍쏜이 직접 대화하듯 구어체로 답변해주세요. 질문자의 상황을 먼저 이해하고, 핵심을 짚은 뒤, 다음 스텝으로 마무리. 300~500자 내외.`;
   } else {
     userPrompt = mode === 'structured'
-      ? `${studentName ? studentName + (req.body.cohort ? ' (' + String(req.body.cohort).slice(0, 10) + ')' : '') : '수강생'}의 미션입니다.${extraContext ? `\n\n[디렉터 메모]\n${extraContext}` : ''}\n\n[제출 내용]\n${question}\n\n---\n\n[참고 자료]\n${contextStr}${casesBlock}${channelsBlock}${referencesBlock}\n\n---\n\n[🎯 진짜 문제]\n(질문 뒤의 핵심 문제 하나)\n\n[✅ 잘 잡고 있는 방향]\n(1~2가지, 이유 포함)\n\n[🔧 더 디깅이 필요한 부분]\n(2~3가지, 커밍쏜 판단과 왜·근거)\n\n[💬 수강생에게 이렇게 전하세요]\n(질문 1~2개 · 핵심 문장 1개 · 다음 미션 1개)\n\n마지막 줄: ✅ 디렉터 선에서 전달 가능 / ⚠️ 커밍쏜 확인 필요 — 이유`
+      ? `${studentName ? studentName + (req.body.cohort ? ' (' + String(req.body.cohort).slice(0, 10) + ')' : '') : '수강생'}의 미션입니다.${extraContext ? `\n\n[디렉터 메모]\n${extraContext}` : ''}\n\n[제출 내용]\n${question}\n\n---\n\n[참고 자료]\n${contextStr}${casesBlock}${channelsBlock}${referencesBlock}\n\n---\n\n[🎯 진짜 문제]\n(질문 뒤의 핵심 문제 하나)\n\n[✅ 잘 잡고 있는 방향]\n(1~2가지, 이유 포함)\n\n[🔧 더 디깅이 필요한 부분]\n(2~3가지, 커밍쏜 판단과 왜·근거)\n\n[💬 수강생에게 이렇게 전하세요]\n(질문 1~2개 · 핵심 문장 1개 · 다음 미션 1개)\n\n마지막 줄: 디렉터 선에서 마무리 / 커밍쏜 확인 필요 — 이유: ○○`
       : `${studentName ? studentName + (req.body.cohort ? ' (' + String(req.body.cohort).slice(0, 10) + ')' : '') : '수강생'}의 미션입니다.${extraContext ? `\n\n[디렉터 메모]\n${extraContext}` : ''}\n\n[제출 내용]\n${question}\n\n---\n\n[참고 자료]\n${contextStr}${casesBlock}${channelsBlock}${referencesBlock}\n\n---\n\n커밍쏜의 판단과 근거를 디렉터가 수강생에게 그대로 전할 수 있게 구어체로 작성해주세요. 진짜 문제를 먼저 짚고, 핵심 판단과 왜를 말하고, 전달 가이드(질문·핵심 문장·미션)와 마지막 줄로 마무리. 400~700자 내외.`;
   }
 
   try {
     // ─── 대화(챗) 모드: 형식 제약 해제 + 커밍쏜 대화 원칙 ───
     if (req.body && req.body.chat) {
-      VARIABLE_SYSTEM += '\n\n[대화 모드 지침 — 위의 출력 형식·분량 지시보다 우선]\n지금은 디렉터와 실시간 채팅 중이다. 답변은 바로 시작한다 — 첫 문장부터 먼저 낸다.\n- 대화 흐름에 맞는 자연스러운 길이로 답한다. 간단한 질문엔 간결하게, 로드맵 점검이나 기획 요청엔 깊이 있게.\n- 커밍쏜의 코칭 방식을 따른다: 1) 질문 뒤의 진짜 문제를 정면으로 짚는다 2) 왜?를 파고든다 — 결핍이 모호하면 메시지도 타겟도 흔들린다 3) 소재는 대중성으로, 차별화는 메시지·페르소나·라이프스타일로 만든다 4) 수익 불안 때문에 방향을 바꾸려는 패턴을 경계시킨다 5) 디렉터가 수강생에게 전할 말(질문·핵심 문장·미션)과 마지막 줄(✅ 전달 가능 / ⚠️ 커밍쏜 확인 필요)로 끝낸다.\n- 판단에 필요한 정보가 부족하면 먼저 되묻는다. 근거 없는 확신 대신 참고 자료와 과거 사례에 기반해 말한다.\n- 아이디어 제안 요청에는 구체적 예시(제목·훅·콘텐츠 구조)까지 낸다.\n- 참고 자료에 관련 사례가 있으면 자연스럽게 인용하고 출처를 짧게 붙인다. 리서치 블록이 있으면 그 수치로 말하고, 없으면 숫자를 만들지 않는다.';
+      VARIABLE_SYSTEM += '\n\n[대화 모드 지침 — 위의 출력 형식·분량 지시보다 우선]\n지금은 디렉터와 실시간 채팅 중이다. 답변은 바로 시작한다 — 첫 문장부터 먼저 낸다.\n- 대화 흐름에 맞는 자연스러운 길이로 답한다. 간단한 질문엔 간결하게, 로드맵 점검이나 기획 요청엔 깊이 있게.\n- 커밍쏜의 코칭 방식을 따른다: 1) 질문 뒤의 진짜 문제를 정면으로 짚는다 2) 왜?를 파고든다 — 결핍이 모호하면 메시지도 타겟도 흔들린다 3) 소재는 대중성으로, 차별화는 메시지·페르소나·라이프스타일로 만든다 4) 수익 불안 때문에 방향을 바꾸려는 패턴을 경계시킨다 5) 디렉터가 수강생에게 전할 말(질문·핵심 문장·미션)과 마지막 줄(디렉터 선에서 마무리 / 커밍쏜 확인 필요 — 이유)로 끝낸다.\n- 판단에 필요한 정보가 부족하면 먼저 되묻는다. 근거 없는 확신 대신 참고 자료와 과거 사례에 기반해 말한다.\n- 아이디어 제안 요청에는 구체적 예시(제목·훅·콘텐츠 구조)까지 낸다.\n- 참고 자료에 관련 사례가 있으면 자연스럽게 인용하고 출처를 짧게 붙인다. 리서치 블록이 있으면 그 수치로 말하고, 없으면 숫자를 만들지 않는다.';
       userPrompt = (extraContext ? '[맥락 정보]\n' + extraContext + '\n\n' : '') + '[참고 자료]\n' + contextStr + casesBlock + channelsBlock + referencesBlock + '\n\n---\n\n디렉터의 메시지: ' + question;
     }
 
@@ -812,7 +812,7 @@ ${isPublic
       if (searches) M.sources.webSearches = searches;
       // 기준서 4절 지표 — "커밍쏜 확인 필요" 비율. 마지막 줄 규칙으로 답변이 스스로 표시한다.
       M.needsOwner = /커밍쏜 확인 필요/.test(tail);
-      M.closedByDirector = /디렉터 선에서 전달 가능/.test(tail);
+      M.closedByDirector = /디렉터 선에서 (마무리|전달 가능)/.test(tail);
       logMetrics({ ok: !streamErr, error: streamErr, answerChars });
       return res.end();
     }
@@ -833,7 +833,7 @@ ${isPublic
     M.usage = { input: u.input_tokens || 0, output: u.output_tokens || 0,
                 cacheRead: u.cache_read_input_tokens || 0, cacheWrite: u.cache_creation_input_tokens || 0 };
     M.needsOwner = /커밍쏜 확인 필요/.test(text.slice(-600));
-    M.closedByDirector = /디렉터 선에서 전달 가능/.test(text.slice(-600));
+    M.closedByDirector = /디렉터 선에서 (마무리|전달 가능)/.test(text.slice(-600));
     logMetrics({ ok: true, answerChars: text.length });
     return res.status(200).json({ feedback: text, sources: hits, evidence });
   } catch(e) {
