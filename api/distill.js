@@ -262,6 +262,7 @@ const MERGE_PATTERNS_SYSTEM = `당신은 퍼스널메이커스 팀의 분석가�
 2) 각 항목이 기존 논리 체크의 몇 번과 같은 뜻인지 표시합니다(matches: 번호, 없으면 0). 기존 것을 더 구체화하는 정도면 그 번호를 적습니다.
 3) 문장은 지침 형식 20~120자, 단정형. 내부 용어 금지. 문장 안에 큰따옴표(")를 쓰지 않는다 — 인용은 작은따옴표나 「」로.
 4) 카드 id 는 쓰지 않습니다. 후보 번호만 씁니다.
+5) 최종 항목은 최대 50개. 비슷한 것은 과감히 합칩니다.
 출력은 JSON 배열만. [{"text": "원칙 한 줄", "matches": 0, "from": [후보 번호, ...]}]`;
 
 async function patternCards(db) {
@@ -273,8 +274,8 @@ async function patternCards(db) {
     .slice(0, PATTERN_MAX_CARDS);
   return rows.map((c) => ({ id: c.id, summary: String(c.summary).slice(0, 120), diagnosis: String(c.diagnosis || '').slice(0, 220), prescription: String(c.prescription || c.body || '').slice(0, 320), doc: String(c.sourceDoc || c.participants || '').slice(0, 80), cohort: c.cohort || '' }));
 }
-async function claudeJson(system, user, KEY, maxTokens) {
-  const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: claudeHeaders(KEY), body: claudeBody(system, user, { maxTokens, effort: 'medium', model: PATTERN_MODEL }) });
+async function claudeJson(system, user, KEY, maxTokens, opts = {}) {
+  const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: claudeHeaders(KEY), body: claudeBody(system, user, Object.assign({ maxTokens, effort: 'medium', model: PATTERN_MODEL }, opts)) });
   const d = await r.json();
   if (!r.ok || d.error) throw new Error(d.error?.message || ('Claude ' + r.status));
   const txt = pickText(d);
@@ -316,7 +317,8 @@ async function patternsStep(db, KEY, { force = false, maxBatches = 2 } = {}) {
   // 후보에 카드 수(출처 수)만 보여주고 id 는 감춘다 — 모델은 번호로만 답하고, 카드 합집합은 코드가 만든다.
   const user = '[기존 논리 체크]\n' + existing.map((l, i) => `${i + 1}. ${l}`).join('\n') + '\n\n[패턴 후보 ' + all.length + '개]\n' + all.map((x, i) => `${i + 1}. ${x.pattern} (카드 ${x.cards.length}장)`).join('\n');
   let merged;
-  try { merged = await claudeJson(MERGE_PATTERNS_SYSTEM, user, KEY, 12000); }
+  // 병합은 사고(thinking) 없이 — 사고 토큰이 max_tokens 를 같이 쓰기 때문에 후보 100여 개에서 출력이 잘렸다(3차 실패 원인).
+  try { merged = await claudeJson(MERGE_PATTERNS_SYSTEM, user, KEY, 16000, { thinking: false }); }
   catch (e) { st.status = 'error'; st.error = String(e.message).slice(0, 160); st.at = Date.now(); await ref.set(st); return { status: 'error', error: st.error }; }
   const patterns = merged.filter((x) => x && x.text).map((x) => {
     const from = (Array.isArray(x.from) ? x.from : []).map((n) => all[Number(n) - 1]).filter(Boolean);
