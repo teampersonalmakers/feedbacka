@@ -35,6 +35,26 @@ export const MIN_VIEWS = 10000;
 const REF_RE = /(레퍼런스|벤치마킹|벤치마크|참고(?:할|할\s*만한)?|롤모델)\s*(?:유튜브\s*)?채널[^\n]{0,20}(추천|찾|알려|골라|뽑|리서치|서치|검색)|채널\s*(추천|리서치)|(추천|찾)[^\n]{0,8}(레퍼런스|벤치마킹)\s*채널/;
 export function isReferenceRequest(text) { return REF_RE.test(String(text || '')); }
 
+// 데이터가 있어야 답이 되는 질문 — "이 주제 유튜브에서 되나요", "경쟁 채널 많나요", "구독자 얼마나 나오나요".
+// 명시적 추천 요청이 아니어도 리서치를 돌려 숫자를 지어내지 않게 한다.
+const DATA_RE = /(시장|경쟁|포화|수요|트렌드|잘\s*되는|되는\s*주제|될까요|되나요|먹히나요|먹힐까요|반응|조회수가?\s*(나올|나오)|구독자.{0,6}(얼마나|어느\s*정도)|비슷한\s*채널|이런\s*채널|누가\s*하고|다른\s*사람들?은|데이터|숫자로|리서치|검색해)/;
+const YT_CTX = /유튜브|채널|영상|콘텐츠|주제|조회수|구독자|숏폼|쇼츠|썸네일/;
+export function isDataQuestion(text) { const t = String(text || ''); return DATA_RE.test(t) && YT_CTX.test(t); }
+
+// 하루 리서치 상한 — 검색 1회 600유닛, 한도 10,000. 12회를 넘기면 그날은 리서치 없이 "데이터 없음"으로 답한다.
+export const DAILY_CAP = 12;
+export async function reserveResearchSlot(todayStr) {
+  const db = getDb(); if (!db) return { ok: true, used: 0 };
+  try {
+    const ref = db.collection('references').doc('_quota_' + todayStr);
+    const snap = await ref.get();
+    const used = (snap.exists && snap.data().used) || 0;
+    if (used >= DAILY_CAP) return { ok: false, used };
+    await ref.set({ used: used + 1, day: todayStr, at: Date.now() }, { merge: true });
+    return { ok: true, used: used + 1 };
+  } catch (e) { return { ok: true, used: 0 }; }
+}
+
 const sha = (s) => crypto.createHash('sha1').update(s).digest('hex').slice(0, 24);
 
 // ─── 1) 주제 → 검색어 (Sonnet, 사고 없음) ─────────────────────────────────────
@@ -217,6 +237,8 @@ export async function referenceResearch({ question, context, studentName, claude
   let r;
   if (hit) { r = hit; out.cached = true; }
   else {
+    const slot = await reserveResearchSlot(new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10));
+    if (!slot.ok) { out.errors.push(`오늘 리서치 한도(${DAILY_CAP}회) 소진 — 내일 다시 조회 가능`); return out; }
     r = await runResearch(plan, auth);
     if (r.tiers.some((t) => t.channels.length) || r.contents.length) cachePut(key, Object.assign({ at: Date.now(), topic: plan.topic }, r));
   }

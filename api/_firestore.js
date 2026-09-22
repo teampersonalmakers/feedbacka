@@ -200,9 +200,12 @@ export async function loadCases() {
   try {
     const snap = await db.collection(COL.cases).where('aiApplied', '==', true).limit(200).get();
     const items = snap.docs
-      .map((d) => d.data())
+      .map((d) => Object.assign({ id: d.id }, d.data()))
       .map((r) => ({
+        id: r.id,
         summary: r.summary || '',
+        quote: r.quote || '',
+        participants: r.participants || '',
         body: r.body || '',
         director: r.director || '',
         cohort: r.cohort || '',
@@ -220,6 +223,27 @@ export async function loadCases() {
     console.warn('[Firestore] 디렉팅 사례 로드 실패:', e.message);
     return stale('cases');
   }
+}
+
+// 커밍쏜 실제 발화 샘플 — 승인 사례의 '커밍쏜 발화'(녹취 원문 인용)에서 고른다.
+// 말투·리듬·표현을 지어내지 않고 실제 말에서 배우게 하기 위한 것. 결정적(정렬 고정)이라
+// 사례가 바뀌기 전엔 매번 같은 텍스트 → 프롬프트 캐시가 유지된다.
+export function quoteSamples(cases, n = 24) {
+  const seen = new Set();
+  const out = [];
+  const ok = (q) => q.length >= 18 && q.length <= 170 && !/^\[|\]$/.test(q);
+  const sorted = (cases || [])
+    .filter((c) => c && c.quote && ok(String(c.quote).trim()))
+    .sort((a, b) => ((b.consultedAt || 0) - (a.consultedAt || 0)) || String(a.id || '').localeCompare(String(b.id || '')));
+  for (const c of sorted) {
+    const q = String(c.quote).trim().replace(/\s+/g, ' ');
+    const key = q.slice(0, 30);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ quote: q, cohort: c.cohort || '', round: c.round || '' });
+    if (out.length >= n) break;
+  }
+  return out;
 }
 
 // 질문과 겹치는 2글자 이상 토큰 수로 사례를 고른다.

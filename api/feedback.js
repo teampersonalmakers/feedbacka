@@ -4,6 +4,7 @@ import {
   loadGuidelines as fsLoadGuidelines,
   loadPlaybook as fsLoadPlaybook,
   loadCases as fsLoadCases,
+  quoteSamples,
   loadStudentHistory as fsLoadStudentHistory,
   pickCases,
   firestoreEnabled,
@@ -11,7 +12,7 @@ import {
 } from './_firestore.js';
 import { claudeHeaders, claudeBody, cachedBlock, pickText, webSearchTool } from './_claude.js';
 import { embedQuery, searchChunks, searchChunksByOrigin, countChunks, recencyBoost, timing } from './_vectors.js';
-import { isReferenceRequest, referenceResearch, formatReferenceBlock, summarizeReferences, REFERENCE_GUIDE } from './_references.js';
+import { isReferenceRequest, isDataQuestion, referenceResearch, formatReferenceBlock, summarizeReferences, REFERENCE_GUIDE } from './_references.js';
 import { hasChannelSignal, extractChannelMentions, researchChannels, formatChannelBlock, summarizeChannels, youtubeAuth, probeYouTube } from './_channels.js';
 import { todayKST } from './_firestore.js';
 
@@ -429,7 +430,10 @@ export default async function handler(req, res) {
   // 참여자 주제로 YouTube 를 검색해 구독자 구간별 채널 9개 + 발견 확률 높은 콘텐츠(썸네일 포함)를 만든다.
   let refResearch = null;
   let refPromise = null;
-  if (category !== 'creator' && question && isReferenceRequest(String(question))) {
+  const refExplicit = isReferenceRequest(String(question || ''));
+  const refData = !refExplicit && isDataQuestion(String(question || ''));
+  if (category !== 'creator' && question && (refExplicit || refData)) {
+    M.sources.refTrigger = refExplicit ? 'explicit' : 'data';
     refPromise = (async () => {
       try {
         refResearch = await referenceResearch({ question: String(question), context: String(req.body.extraContext || ''), studentName: String(studentName || '').trim(), claudeKey: CLAUDE_KEY, auth: await youtubeAuth() });
@@ -576,6 +580,9 @@ ${outputList.includes('썸네일 아이디어') ? `## 🖼 썸네일 아이디�
   mark('firestore');
   M.sources.cases = relevantCases.length;
   M.sources.playbook = playbook.length;
+  // 커밍쏜 실제 발화 샘플 — 승인 사례의 녹취 인용. 말투를 지어내지 말고 여기서 배우게. (고정 블록에 들어간다)
+  const samples = quoteSamples((await fsLoadCases()) || [], 24);
+  M.sources.quoteSamples = samples.length;
 
   // 답변 근거 — 디렉터 화면에 "무엇을 보고 답했는지" 보여주기 위한 목록.
   // 본문은 짧게 잘라 보낸다(카드에서 펼쳐 볼 정도).
@@ -639,13 +646,28 @@ ${outputList.includes('썸네일 아이디어') ? `## 🖼 썸네일 아이디�
   // ── 시스템 프롬프트: [고정] + [가변] ──────────────────────────────────────
   // 고정 블록 = 지침·플레이북. 5분 캐시로 갱신되는 동안 모든 요청에 똑같다 → 프롬프트 캐시.
   // 가변 블록 = 카테고리 지침·모드·대화 지침. 요청마다 달라서 캐시 경계 뒤에 둔다.
+  const quoteBlock = samples.length
+    ? '\n\n[커밍쏜 실제 발화 샘플 — 실제 컨설팅 녹취에서 그대로 가져온 말. 문장 길이·리듬·단어 선택·직설적인 정도를 이 톤에 맞춘다. 문장을 그대로 베끼지는 않는다]\n' +
+      samples.map((q) => `- "${q.quote}"${q.cohort ? ` (${[q.cohort, q.round].filter(Boolean).join(' ')})` : ''}`).join('\n')
+    : '';
+
+  // 답변 원칙 — 근거·논리·정직. 매 요청 같으므로 고정 블록(캐시)에 둔다.
+  const GROUNDING = `
+
+[답변 원칙 — 커밍쏜이 직접 컨설팅하듯, 근거와 논리를 함께]
+1) 판단에는 항상 "왜"가 붙는다. 커밍쏜의 컨설팅은 결론만 던지지 않는다 — 참여자의 상황을 먼저 짚고 → 핵심 문제를 정면으로 말하고 → 그렇게 판단하는 원칙(왜)을 말하고 → 실제 사례나 데이터로 뒷받침하고 → 다음 스텝을 준다. 이 흐름이 답변의 뼈대다. 형식 제목을 붙이지 말고 말하듯 이어간다.
+2) 근거는 자료에서 나온 것만. 답변에 쓰는 사례·판단 기준·수치·채널명·영상 제목·커밍쏜 본인 경험은 이번 요청에 딸려 온 참고 자료(자막·승인 답변·디렉팅 사례·리서치 블록)에 있는 것만 쓴다. 자료를 쓸 때는 문장 끝에 출처를 짧게 붙인다 — 예: (사례 2 · 6기 1차), (승인 답변), (자막: 영상 제목), (리서치: 채널명). 디렉터가 어디서 나온 판단인지 볼 수 있어야 한다.
+3) 자료에 없는 건 없다고 말한다. 자료가 뒷받침하지 않는 판단을 해야 할 때는 "이건 자료엔 없고, 커밍쏜의 원칙(핵심 철학 n번)에서 나온 추론이에요"처럼 그 사실을 드러낸다. 커밍쏜이 겪은 일·말한 것처럼 꾸며 말하지 않는다. 숫자가 필요한데 자료에 없으면 숫자를 만들지 말고 "이 부분은 유튜브 데이터 확인이 필요해요 — '레퍼런스 채널 찾아줘'로 요청하면 실제 수치로 답합니다"라고 말한다.
+4) 확신의 정도를 구분한다. 같은 판단이 사례 2건 이상에서 반복되면 확신 있게, 1건이면 "이런 사례가 하나 있었는데", 없으면 원칙에서 나온 추론이라고 말한다. 최신 상담이 옛 판단과 다르면 최신을 따르고 그 차이를 한 줄 짚는다.
+5) 말투는 위 발화 샘플처럼. 디렉터가 그대로 참여자에게 전할 수 있게, 커밍쏜이 눈앞에서 말해주는 톤으로. 다만 사람을 깎아내리는 표현은 쓰지 않는다.`;
+
   const STABLE_SYSTEM = `${personaBase}
 
 [핵심 철학]
 ${corePhilosophy}
 
 [말투와 스타일]
-${toneGuide}${feedbackOrder}${freeGuidelines}${doNotDo}${categoryRules}${playbookStr}`;
+${toneGuide}${feedbackOrder}${freeGuidelines}${doNotDo}${GROUNDING}${quoteBlock}${categoryRules}${playbookStr}`;
 
   let VARIABLE_SYSTEM = `당신의 과거 콘텐츠, 강의, 컨설팅 자료를 참고하여 답변하세요.
 참고 자료 중 '커밍쏜 승인 답변'과 '디렉터 검증 답변'은 팀이 실제 상담에서 확인한 답이다. 비슷한 질문이면 자막보다 이 답의 판단과 기조를 우선 따른다. 다른 수강생의 사례라도 판단 기준은 그대로 적용한다.
@@ -684,7 +706,7 @@ ${isPublic
   try {
     // ─── 대화(챗) 모드: 형식 제약 해제 + 커밍쏜 대화 원칙 ───
     if (req.body && req.body.chat) {
-      VARIABLE_SYSTEM += '\n\n[대화 모드 지침 — 위의 출력 형식·분량 지시보다 우선]\n지금은 디렉터와 실시간 채팅 중이다. 답변은 바로 시작한다 — 첫 문장부터 먼저 낸다.\n- 대화 흐름에 맞는 자연스러운 길이로 답한다. 간단한 질문엔 간결하게, 로드맵 점검이나 기획 요청엔 깊이 있게.\n- 커밍쏜의 코칭 방식을 따른다: 1) 잘한 점을 인정하되 핵심 문제를 정면으로 짚는다 2) 왜?를 파고든다 — 결핍이 모호하면 메시지도 타겟도 흔들린다 3) 소재는 대중성으로, 차별화는 메시지·페르소나·라이프스타일로 만든다 4) 수익 불안 때문에 방향을 바꾸려는 패턴을 경계시킨다 5) 마지막엔 실행 가능한 다음 스텝을 제시한다.\n- 판단에 필요한 정보가 부족하면 먼저 되묻는다. 근거 없는 확신 대신 참고 자료와 과거 사례에 기반해 말한다.\n- 아이디어 제안 요청에는 구체적 예시(제목·훅·콘텐츠 구조)까지 낸다.\n- 참고 자료에 관련 사례가 있으면 자연스럽게 인용한다.';
+      VARIABLE_SYSTEM += '\n\n[대화 모드 지침 — 위의 출력 형식·분량 지시보다 우선]\n지금은 디렉터와 실시간 채팅 중이다. 답변은 바로 시작한다 — 첫 문장부터 먼저 낸다.\n- 대화 흐름에 맞는 자연스러운 길이로 답한다. 간단한 질문엔 간결하게, 로드맵 점검이나 기획 요청엔 깊이 있게.\n- 커밍쏜의 코칭 방식을 따른다: 1) 잘한 점을 인정하되 핵심 문제를 정면으로 짚는다 2) 왜?를 파고든다 — 결핍이 모호하면 메시지도 타겟도 흔들린다 3) 소재는 대중성으로, 차별화는 메시지·페르소나·라이프스타일로 만든다 4) 수익 불안 때문에 방향을 바꾸려는 패턴을 경계시킨다 5) 마지막엔 실행 가능한 다음 스텝을 제시한다.\n- 판단에 필요한 정보가 부족하면 먼저 되묻는다. 근거 없는 확신 대신 참고 자료와 과거 사례에 기반해 말한다.\n- 아이디어 제안 요청에는 구체적 예시(제목·훅·콘텐츠 구조)까지 낸다.\n- 참고 자료에 관련 사례가 있으면 자연스럽게 인용하고 출처를 짧게 붙인다. 리서치 블록이 있으면 그 수치로 말하고, 없으면 숫자를 만들지 않는다.';
       userPrompt = (extraContext ? '[맥락 정보]\n' + extraContext + '\n\n' : '') + '[참고 자료]\n' + contextStr + casesBlock + channelsBlock + referencesBlock + '\n\n---\n\n디렉터의 메시지: ' + question;
     }
 
