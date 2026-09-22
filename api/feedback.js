@@ -581,7 +581,9 @@ ${outputList.includes('썸네일 아이디어') ? `## 🖼 썸네일 아이디�
   M.sources.cases = relevantCases.length;
   M.sources.playbook = playbook.length;
   // 커밍쏜 실제 발화 샘플 — 승인 사례의 녹취 인용. 말투를 지어내지 말고 여기서 배우게. (고정 블록에 들어간다)
-  const samples = quoteSamples((await fsLoadCases()) || [], 24);
+  // 1순위 설정의 '커밍쏜 실제 발화 샘플'(유튜브 자막 원문, 커밍쏜이 편집 가능) + 2순위 승인 사례의 녹취 인용.
+  const voice = (g.voiceSamples || []).map((x) => String(x).trim()).filter(Boolean).slice(0, 40).map((q) => ({ quote: q, cohort: '', round: '', src: '유튜브' }));
+  const samples = voice.concat(quoteSamples((await fsLoadCases()) || [], 12));
   M.sources.quoteSamples = samples.length;
 
   // 답변 근거 — 디렉터 화면에 "무엇을 보고 답했는지" 보여주기 위한 목록.
@@ -647,8 +649,8 @@ ${outputList.includes('썸네일 아이디어') ? `## 🖼 썸네일 아이디�
   // 고정 블록 = 지침·플레이북. 5분 캐시로 갱신되는 동안 모든 요청에 똑같다 → 프롬프트 캐시.
   // 가변 블록 = 카테고리 지침·모드·대화 지침. 요청마다 달라서 캐시 경계 뒤에 둔다.
   const quoteBlock = samples.length
-    ? '\n\n[커밍쏜 실제 발화 샘플 — 실제 컨설팅 녹취에서 그대로 가져온 말. 문장 길이·리듬·단어 선택·직설적인 정도를 이 톤에 맞춘다. 문장을 그대로 베끼지는 않는다]\n' +
-      samples.map((q) => `- "${q.quote}"${q.cohort ? ` (${[q.cohort, q.round].filter(Boolean).join(' ')})` : ''}`).join('\n')
+    ? '\n\n[커밍쏜 실제 발화 샘플 — 커밍쏜 유튜브 자막과 컨설팅 녹취에서 그대로 가져온 말. 문장 길이·리듬·단어 선택·직설적인 정도("왜냐면…거든요", "…해야 돼요", "…잖아요")를 이 톤에 맞춘다. 문장을 그대로 베끼지 않고, 자막 자동 생성 오타는 따라 하지 않는다]\n' +
+      samples.map((q) => `- "${q.quote}"${q.src ? ` (${q.src})` : q.cohort ? ` (컨설팅 ${[q.cohort, q.round].filter(Boolean).join(' ')})` : ' (컨설팅)'}`).join('\n')
     : '';
 
   // 답변 원칙 — 근거·논리·정직. 매 요청 같으므로 고정 블록(캐시)에 둔다.

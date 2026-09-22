@@ -144,6 +144,7 @@ export async function loadGuidelines() {
         case 'format':    g.feedbackOrder = body; break;   // 피드백 순서 (설정 페이지에서 편집)
         case 'freeGuide': g.freeGuidelines = body.join('\n'); break;
         case 'doNotDo':   g.doNotDo = body; break;
+        case 'voice':     g.voiceSamples = body; break;   // 커밍쏜 실제 발화 샘플 (유튜브 자막 원문, 말투 근거)
         case 'category':
           if (!g.categoryGuidelines) g.categoryGuidelines = {};
           g.categoryGuidelines[r.category] = { name: r.name || r.category, rules: body };
@@ -231,7 +232,8 @@ export async function loadCases() {
 export function quoteSamples(cases, n = 24) {
   const seen = new Set();
   const out = [];
-  const ok = (q) => q.length >= 18 && q.length <= 170 && !/^\[|\]$/.test(q);
+  // 문장으로 끝나는 실제 말만 — 불릿에서 따온 구절 조각("…라는 단어를 어려워하면 →")은 뺀다.
+  const ok = (q) => q.length >= 22 && q.length <= 170 && !/^\[|\]$|→|^이라는|^라는/.test(q) && /(요|다|죠|까|어|야|네|지|래|세|라)[.!?…]*$/.test(q);
   const sorted = (cases || [])
     .filter((c) => c && c.quote && ok(String(c.quote).trim()))
     .sort((a, b) => ((b.consultedAt || 0) - (a.consultedAt || 0)) || String(a.id || '').localeCompare(String(b.id || '')));
