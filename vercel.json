@@ -16,6 +16,9 @@
     },
     "api/backfill.js": {
       "maxDuration": 300
+    },
+    "api/trendlab.js": {
+      "maxDuration": 60
     }
   }
 }

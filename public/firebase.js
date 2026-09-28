@@ -745,6 +745,7 @@ function gateFatal(detail) {
     // '설정'(AI 지침·디렉팅 사례·지식베이스)은 소유자 계정에만 보인다(규칙에서도 막혀 있다).
     const links = [
       { id: 'pmNavPlaybook', href: '/playbook.html', label: '📒 플레이북', match: /\/playbook(\.html)?$/, show: true },
+      { id: 'pmNavTrend', href: '/trendlab.html', label: '📈 트렌드랩', match: /\/trendlab(\.html)?$/, show: true },
       { id: 'pmNavInsight', href: '/settings.html', label: '⚙️ 설정', match: /\/(settings|insight)(\.html)?$/, show: api.isOwner() },
     ];
     let first = true;
@@ -797,6 +798,7 @@ function gateFatal(detail) {
       if (api.isAdmin()) item('👥 디렉터 관리', () => openAdmin(api));
       if (api.isOwner() && !/\/(settings|insight)(\.html)?$/.test(location.pathname)) item('⚙️ 설정 (AI 지침·사례·지식베이스)', () => { location.href = '/settings.html'; });
       if (!/\/playbook(\.html)?$/.test(location.pathname)) item('📒 플레이북', () => { location.href = '/playbook.html'; });
+      if (!/\/trendlab(\.html)?$/.test(location.pathname)) item('📈 트렌드랩 (유튜브 리서치)', () => { location.href = '/trendlab.html'; });
       item('🚪 로그아웃', () => { if (confirm('로그아웃할까요?')) api.signOut(); }, 'danger');
       document.body.appendChild(menu);
       const r = b.getBoundingClientRect();
