@@ -2291,7 +2291,13 @@ function VideoTab({apiKey,savedVideos,setSavedVideos,onSearchDone}){
   const[maxResults,setMaxResults]=useState(100);
   const[deepCrawl,setDeepCrawl]=useState(false); /* 기본 절약 모드 — 심층 크롤은 명시적으로 켜야 함 [API 절약] */
   const[typeFilter,setTypeFilter]=useState("all");
-  const[searchDur,setSearchDur]=useState(""); /* "" | "short" | "medium" | "long" */
+  const[searchDur,setSearchDur]=useState("nonshort"); /* "nonshort"(기본, 3분 이상) | "short"(3분 미만) | ""(전체) */
+  /* API 길이 파라미터: nonshort 는 호출별로 다르게(관련성은 필터 없이 3~4분도 잡고, 조회수·최신은 medium, 추가로 long) */
+  const apiDur=(pref)=>searchDur==="nonshort"?pref:searchDur;
+  const durOk=(sec)=>searchDur==="nonshort"?sec>=180:searchDur==="short"?sec<180:true;
+  /* ── 터진 소재 확장: 상위 영상의 소재를 AI 가 뽑아 같은 소재의 다른 채널 영상을 더 모은다 ── */
+  const[expandKw,setExpandKw]=useState([]);
+  const[expanding,setExpanding]=useState(false);
   const[postDurFilter,setPostDurFilter]=useState("all"); /* all | shorts | mid | long — 검색 후 정밀 필터 */
   const[smallOnly,setSmallOnly]=useState(false);
   const[subsCap,setSubsCap]=useState(0); /* 0=전체, 1=1만이하, 5=5만이하, 10=10만이하 */
@@ -2316,7 +2322,7 @@ function VideoTab({apiKey,savedVideos,setSavedVideos,onSearchDone}){
   useEffect(()=>_persist("vt_sh",searchHistory),[searchHistory]);
 
   /* 저장용 경량 매퍼 — 검색기록 용량 절감: relevance 제거, tags는 상위 10개만 유지. TagRecommend가 v.tags를 읽으므로 완전 제거는 불가 */
-  const _lightVideo=v=>({videoId:v.videoId,channelId:v.channelId,title:v.title,channel:v.channel,thumbnail:v.thumbnail,duration:v.duration,durationSec:v.durationSec,videoType:v.videoType,uploadDays:v.uploadDays,publishedAt:v.publishedAt,views:v.views,likes:v.likes,comments:v.comments,subscribers:v.subscribers,engagementRate:v.engagementRate,viralScore:v.viralScore,exposureGrade:v.exposureGrade,dailyGrowth:v.dailyGrowth??null,growthData:v.growthData??null,tags:(v.tags||[]).slice(0,10)});
+  const _lightVideo=v=>({videoId:v.videoId,foundBy:v.foundBy||"",channelId:v.channelId,title:v.title,channel:v.channel,thumbnail:v.thumbnail,duration:v.duration,durationSec:v.durationSec,videoType:v.videoType,uploadDays:v.uploadDays,publishedAt:v.publishedAt,views:v.views,likes:v.likes,comments:v.comments,subscribers:v.subscribers,engagementRate:v.engagementRate,viralScore:v.viralScore,exposureGrade:v.exposureGrade,dailyGrowth:v.dailyGrowth??null,growthData:v.growthData??null,tags:(v.tags||[]).slice(0,10)});
   const saveToHistory=(sq,vids,prevEntry)=>{
     const topExp=vids.filter(v=>v.exposureGrade==="매우높음"||v.exposureGrade==="높음").length;
     /* 스냅샷 이력 구축: 이전 검색 데이터와 비교 */
@@ -2356,35 +2362,71 @@ function VideoTab({apiKey,savedVideos,setSavedVideos,onSearchDone}){
   const removeFromHistory=(sq)=>{setSearchHistory(prev=>prev.filter(h=>h.query!==sq));};
 
   const[crawlStatus,setCrawlStatus]=useState("");
-  const doSearch=async(q)=>{
+  /* 제목에서 2어절 조합 빈도 — AI 가 안 될 때의 대체 소재 추출 */
+  const ngramKeywords=(titles,base)=>{
+    const stop=new Set(String(base).toLowerCase().split(/\s+/));const cnt={};
+    titles.forEach(t=>{const w=String(t).replace(/[\[\]()|"'#!?,.:~·…]/g," ").split(/\s+/).filter(x=>x.length>=2&&!stop.has(x.toLowerCase()));for(let i=0;i<w.length-1;i++){const g=w[i]+" "+w[i+1];cnt[g]=(cnt[g]||0)+1;}});
+    return Object.entries(cnt).filter(([,c])=>c>=2).sort((a,b)=>b[1]-a[1]).map(([g])=>g).slice(0,5);
+  };
+  const expandBreakout=async()=>{
+    if(!query||expanding||loading)return;
+    const top=[...videos].filter(v=>v.durationSec>=180).sort((a,b)=>b.viralScore-a.viralScore).slice(0,12);
+    if(top.length<3){setErr("터진 영상이 3개 이상 있어야 소재를 뽑을 수 있습니다.");return;}
+    setExpanding(true);setErr("");setCrawlStatus("🔥 터진 영상 제목에서 소재를 뽑는 중 (AI)...");
+    let kws=[];
+    try{
+      const prompt=`아래는 유튜브에서 "${query}"로 검색해 구독자 대비 조회수가 높게 터진 영상 제목들이다.
+이 영상들이 실제로 다룬 '소재'(시청자가 클릭한 구체적 주제·상황·질문)를 찾아, 같은 소재로 만든 다른 채널의 영상을 유튜브 검색창에서 찾을 때 칠 검색어 5개를 만들어라.
+- 원 키워드 "${query}"를 그대로 반복하지 말고 소재 각도로. 2~5어절 한국어. 서로 다른 소재.
+- 제목에 없는 소재를 지어내지 말 것.
+${top.map((v,i)=>`${i+1}. ${v.title} (${v.channel}, 구독 ${fmtN(v.subscribers)}, 조회 ${fmtN(v.views)})`).join("\n")}
+JSON 만: {"keywords":["...","...","...","...","..."]}`;
+      const res=await gemini(prompt,apiKey);
+      if(res&&Array.isArray(res.keywords))kws=res.keywords.map(x=>String(x).trim()).filter(x=>x&&x.length<=30);
+    }catch(e){console.warn("expand ai",e.message);}
+    if(!kws.length)kws=ngramKeywords(top.map(v=>v.title),query);
+    kws=[...new Set(kws)].filter(k=>k.toLowerCase()!==query.toLowerCase()).slice(0,5);
+    if(!kws.length){setErr("확장할 소재를 찾지 못했습니다.");setExpanding(false);setCrawlStatus("");return;}
+    setExpandKw(kws);
+    try{await doSearch(query,kws);}finally{setExpanding(false);}
+  };
+  const doSearch=async(q,extraKws=[])=>{
     const sq=(q||inputVal).trim();if(!sq)return;
     setQuery(sq);setLoading(true);setErr("");setVideos([]);setAiAction(null);setCrawlStatus("");
+    if(!extraKws.length)setExpandKw([]);
     try{
-      const seen=new Set();const allItems=[];
-      /* safeSearch: ytSearch(q,k,n,t,dur,opts) 래핑 — 에러 격리 */
-      const ss=async(query,n,dur,opts)=>{try{const r=await ytSearch(query,apiKey,n,"video",dur,opts);(r||[]).forEach(it=>{const vid=it.id?.videoId;if(vid&&!seen.has(vid)){seen.add(vid);allItems.push(it);}});return r?.length||0;}catch(e){console.warn("crawl",e.message);return 0;}};
+      const seen=new Set();const allItems=[];const foundBy={};
+      /* safeSearch: ytSearch(q,k,n,t,dur,opts) 래핑 — 에러 격리. tag 가 있으면 그 검색어로 처음 발견된 영상에 표시 */
+      const ss=async(query,n,dur,opts,tag)=>{try{const r=await ytSearch(query,apiKey,n,"video",dur,opts);(r||[]).forEach(it=>{const vid=it.id?.videoId;if(vid&&!seen.has(vid)){seen.add(vid);allItems.push(it);if(tag)foundBy[vid]=tag;}});return r?.length||0;}catch(e){console.warn("crawl",e.message);return 0;}};
       const perOrder=Math.ceil(maxResults*0.4);const perTime=Math.ceil(maxResults*0.2);
-      /* ── 핵심 검색: 관련성 + 조회수 + 최신 — 독립 호출이라 병렬 실행 [API 절약] ── */
+      /* ── 핵심 검색: 관련성 + 조회수 + 최신 — 독립 호출이라 병렬 실행 [API 절약] ──
+         3분 이상 모드: 관련성은 길이 필터 없이(3~4분 영상도 잡힘), 조회수·최신은 medium(4~20분), 추가로 long(20분 초과) 조회수순 */
       setCrawlStatus(deepCrawl?`[1/4] 심층 크롤 — "${sq}" 관련성·조회수·최신순 병렬 수집 중...`:`절약 모드 — "${sq}" 관련성·조회수·최신순 병렬 수집 중...`);
       await Promise.all([
-        ss(sq,perOrder,searchDur,{}),
-        ss(sq,perOrder,searchDur,{order:"viewCount"}),
-        ss(sq,perTime,searchDur,{order:"date"})
+        ss(sq,perOrder,apiDur(""),{}),
+        ss(sq,perOrder,apiDur("medium"),{order:"viewCount"}),
+        ss(sq,perTime,apiDur("medium"),{order:"date"}),
+        ...(searchDur==="nonshort"?[ss(sq,perTime,"long",{order:"viewCount"})]:[])
       ]);
+      /* ── 터진 소재 확장: AI 가 뽑은 소재 검색어로 조회수순 수집 (검색어당 100유닛) ── */
+      if(extraKws.length){
+        setCrawlStatus(`🔥 터진 소재 ${extraKws.length}개로 확장 수집 중... (${extraKws.join(" · ")})`);
+        await Promise.all(extraKws.map(kw=>ss(kw,25,apiDur("medium"),{order:"viewCount"},kw)));
+      }
       if(deepCrawl){
         /* ── 심층 크롤 전용: 시간대 분할 수집 — 7일, 30일, 90일 병렬 ── */
         if(allItems.length<maxResults*1.5){
           setCrawlStatus(`[2/4] 최근 7·30·90일 인기영상 병렬 수집 중... (${allItems.length}개)`);
           await Promise.all([7,30,90].map(days=>{
             const after=new Date(Date.now()-days*86400000).toISOString();
-            return ss(sq,perTime,searchDur,{order:"viewCount",publishedAfter:after});
+            return ss(sq,perTime,apiDur("medium"),{order:"viewCount",publishedAfter:after});
           }));
         }
         /* ── 심층 크롤 전용: 키워드 변형 수집 — 원본 + 한국어 수식어 병렬 ── */
         if(allItems.length<maxResults*2){
           const variations=[`"${sq}" 유튜브`,`${sq} 하는법`,`${sq} 브이로그`,`${sq} 리뷰`,`${sq} 현실`];
           setCrawlStatus(`[3/4] 변형 키워드 ${variations.length}종 병렬 수집 중... (${allItems.length}개)`);
-          await Promise.all(variations.map(vq=>ss(vq,Math.ceil(perTime/2),searchDur,{order:"viewCount"})));
+          await Promise.all(variations.map(vq=>ss(vq,Math.ceil(perTime/2),apiDur("medium"),{order:"viewCount"})));
         }
         /* ── 심층 크롤 전용: 채널 확장 수집 — 상위 채널의 관련 영상 병렬 ── */
         if(allItems.length>=20&&allItems.length<maxResults*2.5){
@@ -2399,7 +2441,8 @@ function VideoTab({apiKey,savedVideos,setSavedVideos,onSearchDone}){
       const vIds=allItems.map(i=>i.id.videoId).filter(Boolean);
       const vdRaw=[];for(let i=0;i<vIds.length;i+=50){setCrawlStatus(`영상 상세 ${i+1}~${Math.min(i+50,vIds.length)}/${vIds.length} 로딩 중...`);const batch=vIds.slice(i,i+50);const vd=await ytVids(batch,apiKey);vdRaw.push(...vd);}
       const MIN_VIEWS=30000;
-      const vdAll=vdRaw.filter(v=>parseInt(v.statistics?.viewCount||0)>=MIN_VIEWS);
+      const vdLen=vdRaw.filter(v=>durOk(parseSec(v.contentDetails?.duration||"")));
+      const vdAll=vdLen.filter(v=>parseInt(v.statistics?.viewCount||0)>=MIN_VIEWS);
       setCrawlStatus(`조회수 ${fmtN(MIN_VIEWS)}회 이상 ${vdAll.length}개 영상 (${vdRaw.length}개 중) → 채널 정보 수집 중...`);
       if(!vdAll.length){setErr(`조회수 ${fmtN(MIN_VIEWS)}회 이상 영상이 없습니다. 더 인기 있는 키워드로 검색하거나 API 할당량을 확인해주세요.`);setLoading(false);setCrawlStatus("");return;}
       /* ── 채널 정보: 필터링 후 남은 영상의 채널만 조회 (API 절약) ── */
@@ -2436,7 +2479,7 @@ function VideoTab({apiKey,savedVideos,setSavedVideos,onSearchDone}){
         if(multiWord&&titleHits<=1&&tagHits<=1&&relScore<60)relScore=Math.min(relScore,15);
         /* [4] 전혀 관련 없으면 0점 */
         if(titleHits===0&&tagHits===0&&!titleLower.includes(sqLower))relScore=0;
-        return{videoId:v.id,channelId:v.snippet.channelId,title:v.snippet.title,channel:v.snippet.channelTitle,thumbnail:`https://i.ytimg.com/vi/${v.id}/mqdefault.jpg`,duration:parseDur(v.contentDetails?.duration||""),durationSec:dSec,videoType:getType(dSec),uploadDays:ud,publishedAt:v.snippet.publishedAt,views,likes,comments,subscribers:subs,engagementRate:engR(likes,comments,views),viralScore:viral(views,likes,comments,subs,ud),exposureGrade:expGrade(views,likes,comments,subs,ud),relevance:relScore,tags:v.snippet.tags||[]};
+        return{videoId:v.id,foundBy:foundBy[v.id]||"",channelId:v.snippet.channelId,title:v.snippet.title,channel:v.snippet.channelTitle,thumbnail:`https://i.ytimg.com/vi/${v.id}/mqdefault.jpg`,duration:parseDur(v.contentDetails?.duration||""),durationSec:dSec,videoType:getType(dSec),uploadDays:ud,publishedAt:v.snippet.publishedAt,views,likes,comments,subscribers:subs,engagementRate:engR(likes,comments,views),viralScore:viral(views,likes,comments,subs,ud),exposureGrade:expGrade(views,likes,comments,subs,ud),relevance:relScore,tags:v.snippet.tags||[]};
       }).filter(v=>v.relevance>=(multiWord?20:1));
       /* 이전 검색 기록에서 같은 키워드의 스냅샷 찾기 */
       const prevEntry=searchHistory.find(h=>h.query===sq);
@@ -2538,7 +2581,7 @@ function VideoTab({apiKey,savedVideos,setSavedVideos,onSearchDone}){
         {/* 검색 전 길이 필터 (API 레벨) */}
         <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
           <span style={{fontSize:10,color:"#64748B",fontWeight:600}}>검색 필터:</span>
-          {[{v:"",l:"전체",c:"#64748B"},{v:"short",l:"숏폼 (3분 미만)",c:"#DC2626"},{v:"medium",l:"롱폼 (3분 이상)",c:"#1B3EC3"}].map(f=>(
+          {[{v:"nonshort",l:"3분 이상 (기본)",c:"#1B3EC3"},{v:"short",l:"숏폼 (3분 미만)",c:"#DC2626"},{v:"",l:"전체",c:"#64748B"}].map(f=>(
             <button key={f.v} onClick={()=>setSearchDur(f.v)} style={{padding:"4px 12px",borderRadius:16,border:`1.5px solid ${searchDur===f.v?f.c:"#E2E8F0"}`,background:searchDur===f.v?f.c+"15":"#fff",color:searchDur===f.v?f.c:"#94A3B8",fontWeight:searchDur===f.v?700:500,fontSize:10,cursor:"pointer",transition:"all .2s"}}>{f.l}</button>
           ))}
           <div style={{width:1,height:14,background:"#E2E8F0",margin:"0 2px"}}/>
@@ -2553,7 +2596,7 @@ function VideoTab({apiKey,savedVideos,setSavedVideos,onSearchDone}){
             <input type="checkbox" checked={deepCrawl} onChange={e=>setDeepCrawl(e.target.checked)} style={{accentColor:"#EA580C",cursor:"pointer",margin:0,width:13,height:13}}/>
             심층 크롤
           </label>
-          <span style={{fontSize:11,color:"#64748B"}}>{deepCrawl?"약 1,500유닛 — 변형 키워드·시간대·채널까지 전방위 수집":"약 300유닛 — 관련성·조회수·최신순 핵심 수집"}</span>
+          <span style={{fontSize:11,color:"#64748B"}}>{deepCrawl?"약 1,500유닛 — 변형 키워드·시간대·채널까지 전방위 수집":(searchDur==="nonshort"?"약 400유닛 — 관련성·조회수·최신순 + 20분 초과 롱폼 수집":"약 300유닛 — 관련성·조회수·최신순 핵심 수집")}</span>
         </div>
       </div>
       {/* ── 검색 기록 ── */}
@@ -2611,6 +2654,20 @@ function VideoTab({apiKey,savedVideos,setSavedVideos,onSearchDone}){
         </div>}
       </div>}
       {err&&<ErrBox msg={err}/>}
+      {videos.length>0&&!loading&&(
+        <div style={{background:"linear-gradient(135deg,#FFF7ED,#FFFBEB)",border:"1px solid #FDBA74",borderRadius:12,padding:"12px 16px",marginBottom:12,display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+          <div style={{flex:1,minWidth:260}}>
+            <div style={{fontSize:12,fontWeight:800,color:"#9A3412"}}>🔥 터진 소재로 더 찾기</div>
+            <div style={{fontSize:11,color:"#7C2D12",lineHeight:1.5,marginTop:2}}>구독자 대비 조회수가 높은 상위 영상의 제목에서 AI 가 '소재'를 뽑고, 같은 소재로 만든 다른 채널 영상을 조회수순으로 추가 수집합니다. (소재 5개 · 약 500유닛)</div>
+            {expandKw.length>0&&<div style={{marginTop:6,display:"flex",gap:5,flexWrap:"wrap",alignItems:"center"}}>
+              <span style={{fontSize:10,color:"#9A3412",fontWeight:700}}>확장 소재:</span>
+              {expandKw.map(k=><span key={k} style={{background:"#fff",border:"1px solid #FDBA74",borderRadius:12,padding:"2px 8px",fontSize:10,color:"#9A3412"}}>{k}</span>)}
+              <span style={{fontSize:10,color:"#EA580C",fontWeight:700}}>→ 추가 발견 {videos.filter(v=>v.foundBy).length}개</span>
+            </div>}
+          </div>
+          <button onClick={expandBreakout} disabled={expanding} style={{background:expanding?"#FED7AA":"linear-gradient(135deg,#EA580C,#F97316)",border:"none",borderRadius:8,padding:"9px 16px",color:"#fff",fontWeight:700,cursor:expanding?"not-allowed":"pointer",fontSize:12,whiteSpace:"nowrap"}}>{expanding?"확장 수집 중...":expandKw.length?"소재 다시 뽑아 더 찾기":"터진 소재로 더 찾기"}</button>
+        </div>
+      )}
       {videos.length>0&&(
         <div>
           {/* Feature A: 소재 수요·모멘텀 진단 — 분석 탭 위 자동 표시 */}
