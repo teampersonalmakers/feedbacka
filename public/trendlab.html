@@ -172,7 +172,36 @@ function getKeyStatus(){const{keys,failed}=_keyStore;return{total:keys.length,ac
 /* ── 캐시 시스템 ── */
 const CACHE_TTL={vid:3600000,ch:21600000,search:1800000,cmt:3600000}; /* 영상1h, 채널6h, 검색30m, 댓글1h */
 const _cGet=(prefix,id)=>{try{const raw=localStorage.getItem(prefix+id);if(!raw)return null;const o=JSON.parse(raw);if(Date.now()-o.ts>CACHE_TTL[prefix.replace("_","")])return null;return o.data;}catch(e){return null;}};
-const _cSet=(prefix,id,data)=>{try{localStorage.setItem(prefix+id,JSON.stringify({ts:Date.now(),data}));}catch(e){/* storage full — LRU: ts 오래된 순으로 절반 삭제 */try{const keys=[];for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k?.startsWith("vid_")||k?.startsWith("ch_")||k?.startsWith("search_")||k?.startsWith("cmt_"))keys.push(k);}keys.map(k=>{let ts=0;try{ts=JSON.parse(localStorage.getItem(k)||"{}").ts||0;}catch(e3){}return{k,ts};}).sort((a,b)=>a.ts-b.ts).slice(0,Math.max(1,Math.floor(keys.length/2))).forEach(o=>localStorage.removeItem(o.k));localStorage.setItem(prefix+id,JSON.stringify({ts:Date.now(),data}));}catch(e2){}}};
+/* 저장 공간 예산 — localStorage(사이트당 약 5MB)는 퍼메스 AI 로그인과 같이 쓴다. 캐시가 가득 채우면
+   로그인이 저장되지 않아 로그인 화면으로 되돌아간다(2026-10-02 실제 발생). 쓰기 실패를 기다리지 않고
+   주기적으로 오래된 것부터 지워 예산 안에 묶어둔다. 단위: 문자 수(키+값). */
+const LS_BUDGET={cache:1000000,vt:600000};
+let _lsWrites=0;
+function _lsSweep(){
+  try{
+    const g={cache:[],vt:[]};
+    for(let i=0;i<localStorage.length;i++){
+      const k=localStorage.key(i);if(!k)continue;
+      const grp=(k.startsWith("vid_")||k.startsWith("ch_")||k.startsWith("search_")||k.startsWith("cmt_"))?"cache":k.startsWith("vt_")?"vt":null;
+      if(!grp)continue;
+      const v=localStorage.getItem(k)||"";
+      /* 캐시는 맨 앞 {"ts":…, 추적은 마지막 기록의 "ts":… 기준 */
+      const at=grp==="cache"?v.indexOf('"ts":'):v.lastIndexOf('"ts":');
+      const ts=at>=0?(parseInt(v.slice(at+5,at+25),10)||0):0;
+      g[grp].push({k,ts,n:k.length+v.length});
+    }
+    for(const grp of ["cache","vt"]){
+      let total=g[grp].reduce((s,o)=>s+o.n,0);
+      if(total<=LS_BUDGET[grp])continue;
+      const target=LS_BUDGET[grp]*0.7;
+      g[grp].sort((a,b)=>a.ts-b.ts);
+      for(const o of g[grp]){if(total<=target)break;localStorage.removeItem(o.k);total-=o.n;}
+    }
+  }catch(e){}
+}
+const _lsTick=()=>{if(++_lsWrites%30===0)_lsSweep();};
+try{_lsSweep();}catch(e){}
+const _cSet=(prefix,id,data)=>{_lsTick();try{localStorage.setItem(prefix+id,JSON.stringify({ts:Date.now(),data}));}catch(e){/* storage full — LRU: ts 오래된 순으로 절반 삭제 */try{const keys=[];for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k?.startsWith("vid_")||k?.startsWith("ch_")||k?.startsWith("search_")||k?.startsWith("cmt_"))keys.push(k);}keys.map(k=>{let ts=0;try{ts=JSON.parse(localStorage.getItem(k)||"{}").ts||0;}catch(e3){}return{k,ts};}).sort((a,b)=>a.ts-b.ts).slice(0,Math.max(1,Math.floor(keys.length/2))).forEach(o=>localStorage.removeItem(o.k));localStorage.setItem(prefix+id,JSON.stringify({ts:Date.now(),data}));}catch(e2){}}};
 /* API 절약 카운터 */
 let apiSaved={calls:0,units:0};
 const getApiSaved=()=>({...apiSaved});
@@ -469,7 +498,7 @@ function trackVideoView(videoId,views){
     arr.push({ts:now,v:parseInt(views)||0});
     /* 최대 200개 보관 */
     const trimmed=arr.length>200?arr.slice(-200):arr;
-    localStorage.setItem(key,JSON.stringify(trimmed));return trimmed;
+    _lsTick();localStorage.setItem(key,JSON.stringify(trimmed));return trimmed;
   }catch(e){return[];}
 }
 function getVideoTrack(videoId){

@@ -192,9 +192,91 @@ function gateFatal(detail) {
     </div>`);
 }
 
+// ─── 브라우저 저장 공간 가드 ─────────────────────────────────────────────────
+// 같은 사이트의 트렌드랩이 localStorage(사이트당 약 5MB)를 캐시로 가득 채우면,
+// 구글 인증은 성공했는데 로그인 정보를 브라우저에 쓰지 못해 로그인 화면으로 되돌아온다
+// (2026-10-02 커밍쏜 계정에서 실제 발생). 부팅 때마다 여유 공간을 먼저 확인하고,
+// 모자라면 다시 받아오면 되는 캐시부터 지운다. 대화·리서치 저장분(p_*)·설정은 지우지 않는다.
+const LS_PROBE_CHARS = 256 * 1024;                       // 이만큼은 늘 비어 있어야 한다
+const LS_CACHE_PREFIXES = ['vid_', 'ch_', 'search_', 'cmt_']; // 트렌드랩 API 캐시(재조회 가능)
+const LS_COMPILED_KEYS = ['pm_compiled_code', 'pm_compiled_hash']; // 트렌드랩 컴파일 캐시(재생성 가능)
+
+function lsProbe(n) {
+  const k = '__pm_probe__';
+  try {
+    localStorage.setItem(k, 'x'.repeat(n));
+    localStorage.removeItem(k);
+    return true;
+  } catch (e) {
+    try { localStorage.removeItem(k); } catch (e2) {}
+    return false;
+  }
+}
+
+function lsKeys(test) {
+  const out = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && test(k)) out.push(k);
+    }
+  } catch (e) {}
+  return out;
+}
+
+// 트렌드랩 조회수 추적(vt_*)은 마지막 기록 시각이 오래된 것부터 절반을 지운다.
+function lsTrimTracks() {
+  const rows = lsKeys((k) => k.startsWith('vt_')).map((k) => {
+    let ts = 0;
+    try {
+      const v = localStorage.getItem(k) || '';
+      const i = v.lastIndexOf('"ts":');
+      if (i >= 0) ts = parseInt(v.slice(i + 5), 10) || 0;
+    } catch (e) {}
+    return { k, ts };
+  });
+  rows.sort((a, b) => a.ts - b.ts);
+  rows.slice(0, Math.max(1, Math.ceil(rows.length / 2))).forEach((r) => {
+    try { localStorage.removeItem(r.k); } catch (e) {}
+  });
+  return rows.length;
+}
+
+// 여유 공간을 확보한다. 반환값: { ok, removed }
+function ensureStorage() {
+  let removed = 0;
+  const drop = (keys) => keys.forEach((k) => {
+    try { localStorage.removeItem(k); removed++; } catch (e) {}
+  });
+  try { if (typeof localStorage === 'undefined') return { ok: true, removed }; } catch (e) { return { ok: true, removed }; }
+  if (lsProbe(LS_PROBE_CHARS)) return { ok: true, removed };
+
+  drop(lsKeys((k) => LS_CACHE_PREFIXES.some((p) => k.startsWith(p))));
+  if (lsProbe(LS_PROBE_CHARS)) return { ok: true, removed };
+
+  drop(lsKeys((k) => LS_COMPILED_KEYS.includes(k)));
+  if (lsProbe(LS_PROBE_CHARS)) return { ok: true, removed };
+
+  for (let i = 0; i < 4; i++) {
+    const n = lsTrimTracks();
+    removed += Math.ceil(n / 2);
+    if (!n || lsProbe(LS_PROBE_CHARS)) break;
+  }
+  return { ok: lsProbe(LS_PROBE_CHARS), removed };
+}
+
+const isStorageFull = (e) => {
+  const t = String((e && (e.name || '')) + ' ' + (e && (e.code || '')) + ' ' + (e && (e.message || '')));
+  return /quota|exceeded|setItem|NS_ERROR_DOM_QUOTA/i.test(t);
+};
+
 // ─── 부트 ────────────────────────────────────────────────────────────────────
 (async function boot() {
   let A, F, S, app, auth, db, storage;
+
+  // Firebase 가 브라우저 저장소를 쓰기 전에 공간부터 확보한다.
+  const sg = ensureStorage();
+  if (sg.removed) console.warn('[PMFire] 저장 공간 확보: 캐시 ' + sg.removed + '개 정리', sg.ok ? '' : '(여전히 부족)');
 
   try {
     const [appMod, authMod, fsMod, stMod] = await Promise.all([
@@ -217,7 +299,10 @@ function gateFatal(detail) {
     }
     storage = S.getStorage(app);
     auth = A.getAuth(app);
-    await A.setPersistence(auth, A.browserLocalPersistence).catch(() => {});
+    // 로그인 유지는 IndexedDB 에 둔다(getAuth 기본값). localStorage 는 5MB 를 트렌드랩과
+    // 나눠 써야 해서 가득 차면 로그인이 저장되지 않는다. 기존에 localStorage 에 있던
+    // 로그인은 SDK 가 IndexedDB 로 옮겨주므로 다시 로그인할 필요는 없다.
+    // IndexedDB 를 못 쓰는 환경(일부 프라이빗 창)에서는 SDK 가 자동으로 localStorage 로 내려간다.
   } catch (e) {
     console.error('[PMFire] 초기화 실패:', e);
     gateFatal(e && e.message);
@@ -228,24 +313,38 @@ function gateFatal(detail) {
   const provider = new A.GoogleAuthProvider();
   provider.setCustomParameters({ prompt: 'select_account' });
 
+  // 로그인 실패 직후 onAuthStateChanged(null) 이 로그인 화면을 다시 그려도 사유가 남도록 보관.
+  let lastLoginError = '';
+
   async function doLogin(btn, msgEl) {
+    lastLoginError = '';
     if (btn) { btn.disabled = true; }
     if (msgEl) { msgEl.className = 'pmauth-msg pmauth-ok'; msgEl.textContent = '구글 인증 창을 확인해주세요…'; }
     try {
+      ensureStorage();
       await A.signInWithPopup(auth, provider);
       // 이후 처리는 onAuthStateChanged 가 이어받는다.
     } catch (e) {
       const code = e && e.code ? e.code : '';
-      const msg =
-        code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request'
+      const full = isStorageFull(e);
+      if (full) {
+        const r = ensureStorage();
+        console.warn('[PMFire] 로그인 저장 실패(저장 공간 부족) → 캐시 정리', r);
+      }
+      const msg = full
+        ? '브라우저 저장 공간이 가득 차 로그인을 저장하지 못했어요. 캐시를 정리했으니 한 번 더 눌러주세요.'
+        : code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request'
           ? '로그인이 취소됐어요.'
           : code === 'auth/popup-blocked'
           ? '팝업이 차단됐어요. 브라우저 팝업 허용 후 다시 시도해주세요.'
           : code === 'auth/unauthorized-domain'
           ? '이 도메인이 Firebase 승인 도메인에 없습니다. 콘솔에서 추가해주세요.'
           : '로그인 실패: ' + (e && e.message ? e.message : code);
-      if (msgEl) { msgEl.className = 'pmauth-msg pmauth-err'; msgEl.textContent = msg; }
-      if (btn) btn.disabled = false;
+      lastLoginError = msg;
+      const el = document.getElementById('pmauthMsg') || msgEl;
+      if (el) { el.className = 'pmauth-msg pmauth-err'; el.textContent = msg; }
+      const b = document.getElementById('pmauthGoogle') || btn;
+      if (b) b.disabled = false;
     }
   }
 
@@ -820,7 +919,7 @@ function gateFatal(detail) {
     if (!user) {
       window.PMFire = null;
       PMFire = null;
-      gateLogin('');
+      gateLogin(lastLoginError, !!lastLoginError);
       wireLogin();
       return;
     }
