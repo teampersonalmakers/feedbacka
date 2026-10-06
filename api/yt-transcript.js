@@ -8,6 +8,8 @@
 //   1) 유튜브 앱 클라이언트(InnerTube player API) — 웹 페이지가 서버 IP 를 "봇 확인"으로 막아도
 //      앱 클라이언트는 통과하는 경우가 많고, 자막 주소에 PO 토큰이 필요 없다.
 //   2) 웹 watch 페이지의 captionTracks — 예전 방식. 요즘은 자막 주소에 PO 토큰이 붙어 본문이 비는 일이 많다.
+// 실행 지역: vercel.json 에서 이 함수만 icn1(서울). 미국 데이터센터 IP 는 유튜브가 일부공개 영상에
+// "봇 확인"을 요구해 막는다(2026-10-06 iad1 에서 확인).
 // 실패하면 경로별로 유튜브가 준 사유(playabilityStatus.reason)를 그대로 돌려준다 —
 // "비공개"와 "서버 접근 차단(봇 확인)"을 구분하기 위해서다.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -165,5 +167,5 @@ export default async function handler(req, res) {
   } catch (e) {
     diags.push({ client: 'WEB_PAGE', error: String(e.message).slice(0, 120) });
   }
-  return res.status(200).json({ ok: false, v, title, reason: summarize(diags), diag: diags });
+  return res.status(200).json({ ok: false, v, title, reason: summarize(diags), region: process.env.VERCEL_REGION || '', diag: diags });
 }
