@@ -21,10 +21,7 @@
       "maxDuration": 60
     },
     "api/yt-transcript.js": {
-      "maxDuration": 60,
-      "regions": [
-        "icn1"
-      ]
+      "maxDuration": 60
     }
   }
 }
